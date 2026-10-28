@@ -1,0 +1,7 @@
+node_modules/
+.pio/
+firmware/include/secrets.h
+firmware/test/host/build/
+tools/art/preview/
+.omc/
+.remember/

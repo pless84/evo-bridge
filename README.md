@@ -1,0 +1,141 @@
+# Evo bridge
+
+Turns a Divoom Timebox Evo (16×16 LED speaker) into a status light for Claude Code. A small pet on the display shows whether Claude is thinking, working, waiting for you, done, or hit an error.
+
+```
+Claude Code hooks ──curl──▶ ESP32 (Wi-Fi, http://evo.local) ──Bluetooth SPP──▶ Timebox Evo
+```
+
+| State | Looks like | Sent when |
+|---|---|---|
+| `idle` | teal blob, blinking | session started; 30 s after `done` |
+| `thinking` | violet, three dots | you submit a prompt |
+| `working_bash` | blue, `>_` prompt | Bash tool |
+| `working_edit` | blue, pencil | Edit / Write |
+| `working_read` | blue, open book | Read / Grep / Glob / Web* |
+| `working` | blue, spinner | any other tool |
+| `needs_input` | orange, `?` | permission prompt, a question for you, plan approval |
+| `done` | green, check mark | Claude finishes its turn |
+| `error` | red, `!`, shaking | a tool call failed |
+| `clock` | the Evo's own clock | everything idle for 2 minutes |
+
+With several Claude Code sessions, the display shows the most urgent one (needs_input > error > working > thinking > done > idle). It only goes idle once every session has finished.
+
+## Layout
+
+```
+firmware/   PlatformIO project for the ESP32 bridge
+  include/states.h        generated animation bytes (committed)
+  include/config.h        timings, rate limit, transport, escaping flag
+  include/secrets.h       your Wi-Fi + Evo MAC (gitignored; copy the .example)
+  test/host/run.sh        PC-side tests for the encoder and state machine
+hooks/      evo-hook.sh + settings snippet for ~/.claude/settings.json
+tools/      pixel art + the script that turns it into states.h
+```
+
+## 1. Find the Evo's Bluetooth MAC
+
+Disconnect the Divoom phone app first: the Evo takes only one data connection at a time.
+
+```bash
+bluetoothctl scan on
+```
+
+Look for a `TimeBox-Evo…` entry and note the address (`11:75:58:…`). Stop scanning with `scan off`. The Divoom app also shows the MAC under device info.
+
+**Check which generation you have.** This code speaks the classic Evo protocol over Bluetooth Classic SPP. If `bluetoothctl info <MAC>` lists the Serial Port profile (UUID `00001101-…`), you're on the classic generation and this code applies. If the device only advertises BLE (the newer "TimeBox-Evo-audio" units built on the Anyka chip), it uses a different protocol and the firmware won't work as is.
+
+## 2. Configure and flash the ESP32
+
+Install PlatformIO (`pipx install platformio`), then:
+
+```bash
+cd firmware
+cp include/secrets.h.example include/secrets.h   # then edit: Wi-Fi + EVO_MAC
+pio run -e esp32dev -t upload
+pio device monitor
+```
+
+- Use `-e firebeetle32e` for the DFRobot FireBeetle ESP32-E. The ESP32-C3 Super Mini **won't work** for this phase because it has no Bluetooth Classic.
+- **Permission denied on `/dev/ttyUSB0` or `/dev/ttyACM0`:** run `sudo usermod -aG dialout $USER`, then log out and back in.
+- **Upload hangs on `Connecting…`:** hold the **BOOT** button until the upload starts.
+
+The serial monitor should show `[wifi] <ip>`, `[mdns] http://evo.local`, then `[bt] connected`. The Evo switches to the idle pet. Then try:
+
+```bash
+curl http://evo.local/state/thinking
+curl http://evo.local/status
+curl -X POST -H 'Content-Type: text/plain' --data 'Hello from Claude' 'http://evo.local/text?color=ffd23a'
+curl http://evo.local/brightness/60
+```
+
+## 3. Install the Claude Code hooks
+
+1. Make the script executable (it already is in git): `chmod +x hooks/evo-hook.sh`.
+2. Merge `hooks/settings.snippet.json` into the `hooks` section of `~/.claude/settings.json`. Replace `/ABSOLUTE/PATH/TO` with this repo's path. If you already have hooks for an event, add this entry to its list instead of replacing it.
+3. Optional: if `evo.local` resolves slowly on your network, set `EVO_URL` to the bridge's IP address (for example in your shell profile, or in the `env` section of `settings.json`): `"env": { "EVO_URL": "http://192.168.1.50" }`.
+
+The hook sends its request in the background with a 1-second timeout. If the bridge is unplugged, Claude Code doesn't notice. Each request carries the event time (`&t=`), so the bridge ignores requests that arrive out of order. To see what the hook would send, run:
+
+```bash
+echo '{"hook_event_name":"PreToolUse","session_id":"t1","tool_name":"Bash"}' | EVO_HOOK_DEBUG=1 hooks/evo-hook.sh
+```
+
+| Hook event | State |
+|---|---|
+| `SessionStart` | idle |
+| `UserPromptSubmit` | thinking |
+| `PreToolUse` | working variant for the tool (`AskUserQuestion` / `ExitPlanMode` → needs_input) |
+| `PostToolUse` | same working variant, or `error` if the result says `is_error` |
+| `PostToolUseFailure` | error |
+| `Notification` | needs_input, except the "waiting for your input" reminder after a finished turn |
+| `SubagentStop` | working (the main agent continues) |
+| `Stop` | done |
+| `SessionEnd` | removes the session |
+
+## HTTP API
+
+| Request | Effect |
+|---|---|
+| `GET /state/<state>?session_id=<id>&t=<ms>` | Report a session's state. `end` removes the session. `t` is optional; older events than the newest seen are dropped. |
+| `POST /text` | Body (or form field `text`) scrolls across the display. Optional `?color=RRGGBB`. The current state returns after a few seconds. |
+| `GET /brightness/<0-100>` | Set display brightness. |
+| `GET /status` | JSON: transport, connected, displayed state, active text, sessions. |
+
+## Changing the art
+
+Starter art is defined in code in `tools/art/sprites.js`. To use your own, drop a 16×16 GIF (animated) or PNG into `tools/art/custom/<state>.gif`. Any state name from the table above works except `clock`, which is the Evo's built-in clock. Then:
+
+```bash
+cd tools
+npm install
+npm run build      # renders art/gif/*.gif + art/preview/sheet.png, then writes firmware/include/states.h
+```
+
+Reflash afterwards. The firmware only replays the bytes generated here; all image encoding happens on the PC using [node-divoom-timebox-evo](https://github.com/RomRider/node-divoom-timebox-evo).
+
+## Tuning
+
+Everything is in `firmware/include/config.h`, and each value can be overridden with a `-D` flag in `platformio.ini`:
+
+- `EVO_MSG_INTERVAL_MS` (60): gap between messages. The Evo drops the link above about 30 messages/s.
+- `EVO_WORKING_DEBOUNCE_MS`, `EVO_MIN_DISPLAY_MS`, `EVO_ERROR_HOLD_MS`: anti-flicker timings.
+- `EVO_DONE_HOLD_MS` (30 s) and `EVO_IDLE_TO_CLOCK_MS` (2 min, `0` = never show the clock).
+- `EVO_STALE_BUSY_MS` (10 min): a session stuck in thinking/working this long goes idle. Interrupting Claude with Esc sends no `Stop` event.
+- `EVO_ESCAPE_PAYLOAD` (0): set to 1 if your Evo firmware needs `0x01–0x03` escaped inside messages. Try this if the connection works but the display ignores everything.
+
+## Tests
+
+```bash
+firmware/test/host/run.sh
+```
+
+This compiles the protocol encoder and state machine for the PC. It checks them against byte-for-byte output from the Node library (text, brightness, framing of every state) and covers debounce, error hold, multi-session, out-of-order events, stale sessions, timeout, and `millis()` wrap-around behavior.
+
+## Phase 2: inside the case (not started)
+
+`pio run -e uart-tap` builds the same firmware with a wired UART transport (`EVO_UART_*` pins/baud in `config.h`). It's untested: whether the LED board accepts Divoom frames on TX2/RX2 still needs sniffing. Notes:
+
+1. Confirm the pads are 3.3 V logic.
+2. Sniff TX2 (RX only, shared GND) while the app sends content. Find the baud rate and look for `0x01 … 0x02` frames.
+3. Power: use the Evo's USB 5 V into the ESP32's 5V pin, or tap the battery after the power switch through a low-dropout LDO (ME6211 / RT9013 / HT7333). Never use the 3V3 test pad. The NodeMCU's AMS1117 can't run from a Li-ion cell. Unplug the battery before soldering, and keep the ESP32 antenna away from the speaker magnet.
