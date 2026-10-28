@@ -3,12 +3,12 @@
   "scripts": {
     "art": "node render-art.js",
     "states": "node build-states.js",
-    "build": "node render-art.js && node build-states.js"
+    "build": "node render-art.js && node build-states.js",
+    "test": "node test-encoder.js"
   },
   "type": "commonjs",
   "dependencies": {
     "gifwrap": "^0.10.1",
-    "node-divoom-timebox-evo": "^0.3.0",
     "pngjs": "^7.0.0"
   },
   "private": true

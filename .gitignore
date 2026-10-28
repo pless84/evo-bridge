@@ -5,3 +5,4 @@ firmware/test/host/build/
 tools/art/preview/
 .omc/
 .remember/
+tools/test/.tmp/

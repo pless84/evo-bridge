@@ -121,7 +121,7 @@ Together, these mean a web page you visit can't drive the display, and other dev
 
 ## Changing the art
 
-Starter art is defined in code in `tools/art/sprites.js`. To use your own, drop a 16×16 GIF (animated) or PNG into `tools/art/custom/<state>.gif`. Any state name from the table above works except `clock`, which is the Evo's built-in clock. Then:
+Starter art is defined in code in `tools/art/sprites.js`. To use your own, drop a GIF (animated) or PNG into `tools/art/custom/<state>.gif` (or `.png`). 16×16 is ideal. Larger art is scaled down with nearest neighbor, and transparent pixels show as off. Any state name from the table above works except `clock`, which is the Evo's built-in clock. Then:
 
 ```bash
 cd tools
@@ -129,7 +129,7 @@ npm install
 npm run build      # renders art/gif/*.gif + art/preview/sheet.png, then writes firmware/include/states.h
 ```
 
-Reflash afterwards. The firmware only replays the bytes generated here; all image encoding happens on the PC using [node-divoom-timebox-evo](https://github.com/RomRider/node-divoom-timebox-evo).
+Reflash afterwards. The firmware only replays the bytes generated here; all image encoding happens on the PC in `tools/evo-encode.js`. That's a small, dependency-free port of [node-divoom-timebox-evo](https://github.com/RomRider/node-divoom-timebox-evo), and `npm test` checks it byte for byte against output frozen from that library.
 
 ## Tuning
 
@@ -145,9 +145,10 @@ Everything is in `firmware/include/config.h`, and each value can be overridden w
 
 ```bash
 firmware/test/host/run.sh
+(cd tools && npm test)
 ```
 
-This compiles the protocol encoder and state machine for the PC. It checks them against byte-for-byte output from the Node library (text, brightness, framing of every state) and covers debounce, error hold, multi-session, out-of-order events, stale sessions, timeout, and `millis()` wrap-around behavior.
+The first command compiles the protocol encoder and state machine for the PC. It checks them against byte-for-byte output from the Node library (text, brightness, framing of every state) and covers debounce, error hold, multi-session, out-of-order events, stale sessions, timeout, and `millis()` wrap-around behavior. The second checks the PC-side encoder against the library's frozen output (all starter states, text, brightness) and tests GIF compositing and scaling.
 
 ## Phase 2: inside the case (not started)
 
