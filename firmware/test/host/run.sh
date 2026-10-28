@@ -9,5 +9,5 @@ if [[ "${SANITIZE:-1}" == 1 ]] && echo 'int main(){}' | c++ -x c++ -fsanitize=ad
   SAN="-fsanitize=address,undefined"
 fi
 c++ -std=c++17 -Wall -Wextra -Werror -O1 $SAN \
-  -o build/tests test_main.cpp ../../src/protocol.cpp ../../src/state_machine.cpp
+  -o build/tests test_main.cpp ../../src/protocol.cpp ../../src/state_machine.cpp ../../src/auth.cpp
 ./build/tests

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../../include/states.h"
+#include "../../src/auth.h"
 #include "../../src/protocol.h"
 #include "../../src/state_machine.h"
 #include "fixtures.h"
@@ -226,7 +227,32 @@ static void testStateMachine() {
   }
 }
 
+static void testAuth() {
+  printf("auth\n");
+  CHECK(evo::tokenMatches("abcdef0123456789", "abcdef0123456789"));
+  CHECK(!evo::tokenMatches("abcdef0123456788", "abcdef0123456789"));
+  CHECK(!evo::tokenMatches("abcdef012345678", "abcdef0123456789"));    // prefix
+  CHECK(!evo::tokenMatches("abcdef01234567890", "abcdef0123456789"));  // longer
+  CHECK(!evo::tokenMatches("", "abcdef0123456789"));
+  CHECK(!evo::tokenMatches("", ""));  // no token configured never matches
+
+  const char* ip = "192.168.1.50";
+  CHECK(evo::hostAllowed("evo.local", "evo", ip));
+  CHECK(evo::hostAllowed("EVO.local:80", "evo", ip));
+  CHECK(evo::hostAllowed("evo.local.", "evo", ip));
+  CHECK(evo::hostAllowed("evo", "evo", ip));
+  CHECK(evo::hostAllowed("192.168.1.50", "evo", ip));
+  CHECK(evo::hostAllowed("192.168.1.50:80", "evo", ip));
+  CHECK(!evo::hostAllowed("attacker.example", "evo", ip));  // DNS rebinding
+  CHECK(!evo::hostAllowed("evo.local.attacker.example", "evo", ip));
+  CHECK(!evo::hostAllowed("evo.local:8080", "evo", ip));
+  CHECK(!evo::hostAllowed("192.168.1.5", "evo", ip));
+  CHECK(!evo::hostAllowed("", "evo", ip));
+  CHECK(!evo::hostAllowed(":80", "evo", ip));
+}
+
 int main() {
+  testAuth();
   testProtocol();
   testStateMachine();
   if (failures) {

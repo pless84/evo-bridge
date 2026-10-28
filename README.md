@@ -51,11 +51,18 @@ Install PlatformIO (`pipx install platformio`), then:
 
 ```bash
 cd firmware
-cp include/secrets.h.example include/secrets.h   # then edit: Wi-Fi + EVO_MAC
+cp include/secrets.h.example include/secrets.h   # then edit: Wi-Fi, EVO_MAC, BRIDGE_TOKEN
 pio run -e esp32dev -t upload
 pio device monitor
 ```
 
+- `BRIDGE_TOKEN` is a shared secret that every request must carry. Generate it with `openssl rand -hex 16`, put it in `secrets.h`, and save the same value for the hook:
+
+  ```bash
+  mkdir -p ~/.config/evo-bridge && (umask 077 && echo 'PASTE-TOKEN-HERE' > ~/.config/evo-bridge/token)
+  ```
+
+  The build refuses to compile while the token still has the example value.
 - Use `-e firebeetle32e` for the DFRobot FireBeetle ESP32-E. The ESP32-C3 Super Mini **won't work** for this phase because it has no Bluetooth Classic.
 - **Permission denied on `/dev/ttyUSB0` or `/dev/ttyACM0`:** run `sudo usermod -aG dialout $USER`, then log out and back in.
 - **Upload hangs on `Connecting…`:** hold the **BOOT** button until the upload starts.
@@ -63,17 +70,19 @@ pio device monitor
 The serial monitor should show `[wifi] <ip>`, `[mdns] http://evo.local`, then `[bt] connected`. The Evo switches to the idle pet. Then try:
 
 ```bash
-curl http://evo.local/state/thinking
-curl http://evo.local/status
-curl -X POST -H 'Content-Type: text/plain' --data 'Hello from Claude' 'http://evo.local/text?color=ffd23a'
-curl http://evo.local/brightness/60
+T="X-Evo-Token: $(cat ~/.config/evo-bridge/token)"
+curl -H "$T" http://evo.local/state/thinking
+curl -H "$T" http://evo.local/status
+curl -H "$T" -X POST -H 'Content-Type: text/plain' --data 'Hello from Claude' 'http://evo.local/text?color=ffd23a'
+curl -H "$T" http://evo.local/brightness/60
 ```
 
 ## 3. Install the Claude Code hooks
 
 1. Make the script executable (it already is in git): `chmod +x hooks/evo-hook.sh`.
 2. Merge `hooks/settings.snippet.json` into the `hooks` section of `~/.claude/settings.json`. Replace `/ABSOLUTE/PATH/TO` with this repo's path. If you already have hooks for an event, add this entry to its list instead of replacing it.
-3. Optional: if `evo.local` resolves slowly on your network, set `EVO_URL` to the bridge's IP address (for example in your shell profile, or in the `env` section of `settings.json`): `"env": { "EVO_URL": "http://192.168.1.50" }`.
+3. Save the bridge token for the hook in `~/.config/evo-bridge/token` (see step 2), or set `EVO_TOKEN`. The hook passes it to curl on stdin, so it doesn't show up in the process list.
+4. Optional: if `evo.local` resolves slowly on your network, set `EVO_URL` to the bridge's IP address (for example in your shell profile, or in the `env` section of `settings.json`): `"env": { "EVO_URL": "http://192.168.1.50" }`.
 
 The hook sends its request in the background with a 1-second timeout. If the bridge is unplugged, Claude Code doesn't notice. Each request carries the event time (`&t=`), so the bridge ignores requests that arrive out of order. To see what the hook would send, run:
 
@@ -94,6 +103,14 @@ echo '{"hook_event_name":"PreToolUse","session_id":"t1","tool_name":"Bash"}' | E
 | `SessionEnd` | removes the session |
 
 ## HTTP API
+
+Every endpoint except `/` requires all three of these:
+
+- **`X-Evo-Token` header** matching `BRIDGE_TOKEN`. Otherwise the bridge returns 401.
+- **`Host` header** of `evo.local`, `evo` or the bridge's IP. Otherwise it returns 403. This blocks web pages from reaching the bridge through DNS rebinding.
+- **No `Origin` header.** Otherwise it returns 403. Browsers add one; curl and the hook don't.
+
+Together, these mean a web page you visit can't drive the display, and other devices on your network need the token. The token travels in plain HTTP, so someone sniffing your Wi-Fi could still read it. That's acceptable for a display, but don't reuse the token anywhere else.
 
 | Request | Effect |
 |---|---|

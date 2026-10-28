@@ -6,12 +6,16 @@
 //   POST /text                           body = text (or form field text=), ?color=RRGGBB
 //   GET  /brightness/<0-100>
 //   GET  /status                         JSON
+//
+// Everything except "/" needs the X-Evo-Token header (BRIDGE_TOKEN in secrets.h),
+// a Host header naming this bridge, and no Origin header. See auth.h.
 #include <Arduino.h>
 #include <ESPmDNS.h>
 #include <WebServer.h>
 #include <WiFi.h>
 
 #include "config.h"
+#include "auth.h"
 #include "protocol.h"
 #include "secrets.h"
 #include "sender.h"
@@ -20,6 +24,15 @@
 #include "transport.h"
 
 using evo::State;
+
+constexpr bool sameStr(const char* a, const char* b) {
+  return *a == *b && (*a == 0 || sameStr(a + 1, b + 1));
+}
+static_assert(!sameStr(BRIDGE_TOKEN, "replace-with-openssl-rand-hex-16"),
+              "Set BRIDGE_TOKEN in secrets.h (it still has the example value).");
+static_assert(sizeof(BRIDGE_TOKEN) > 16,
+              "Set BRIDGE_TOKEN in secrets.h to a random string of at least 16 characters "
+              "(e.g. `openssl rand -hex 16`).");
 
 static WebServer server(80);
 static Transport& transport = makeTransport();
@@ -98,6 +111,24 @@ static String jsonEscape(const String& s) {
 
 // ---------------------------------------------------------------------------
 // HTTP
+
+// Sends the error response and returns false if the request is not allowed.
+static bool authorized() {
+  if (server.hasHeader("Origin")) {
+    server.send(403, "text/plain", "browser requests are not allowed\n");
+    return false;
+  }
+  if (!evo::hostAllowed(server.hostHeader().c_str(), BRIDGE_HOSTNAME,
+                        WiFi.localIP().toString().c_str())) {
+    server.send(403, "text/plain", "wrong Host\n");
+    return false;
+  }
+  if (!evo::tokenMatches(server.header("X-Evo-Token").c_str(), BRIDGE_TOKEN)) {
+    server.send(401, "text/plain", "missing or wrong X-Evo-Token\n");
+    return false;
+  }
+  return true;
+}
 
 static void handleState(String name) {
   if (name.endsWith("/")) name.remove(name.length() - 1);
@@ -195,6 +226,7 @@ static void handleStatus() {
 }
 
 static void handleOther() {
+  if (!authorized()) return;
   const String uri = server.uri();
   if (uri.startsWith("/state/")) return handleState(uri.substring(7));
   if (uri.startsWith("/brightness/")) return handleBrightness(uri.substring(12));
@@ -243,8 +275,14 @@ void setup() {
   }
 
   server.on("/", HTTP_GET, handleRoot);
-  server.on("/status", HTTP_GET, handleStatus);
-  server.on("/text", HTTP_POST, handleText);
+  server.on("/status", HTTP_GET, [] {
+    if (authorized()) handleStatus();
+  });
+  server.on("/text", HTTP_POST, [] {
+    if (authorized()) handleText();
+  });
+  static const char* kHeaders[] = {"X-Evo-Token", "Origin"};
+  server.collectHeaders(kHeaders, 2);
   server.onNotFound(handleOther);
   server.begin();
 

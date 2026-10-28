@@ -5,10 +5,16 @@
 #
 # Environment:
 #   EVO_URL        bridge address (default http://evo.local; an IP is faster)
+#   EVO_TOKEN      shared secret (BRIDGE_TOKEN in the firmware's secrets.h), or
+#   EVO_TOKEN_FILE file holding it (default ~/.config/evo-bridge/token)
 #   EVO_HOOK_SYNC  1 = wait for the request (debugging)
 #   EVO_HOOK_DEBUG 1 = print the URL instead of calling it
 
 EVO_URL="${EVO_URL:-http://evo.local}"
+EVO_TOKEN_FILE="${EVO_TOKEN_FILE:-$HOME/.config/evo-bridge/token}"
+if [[ -z "${EVO_TOKEN:-}" && -r "$EVO_TOKEN_FILE" ]]; then
+  EVO_TOKEN="$(tr -d '[:space:]' < "$EVO_TOKEN_FILE" 2>/dev/null)"
+fi
 
 input="$(cat 2>/dev/null || true)"
 # Event time in ms. Requests run in the background and can arrive out of
@@ -73,9 +79,15 @@ if [[ "${EVO_HOOK_DEBUG:-0}" == 1 ]]; then
   exit 0
 fi
 
+# The token goes to curl on stdin (-H @-), so it never shows up in `ps`.
+send() {
+  printf 'X-Evo-Token: %s\n' "${EVO_TOKEN:-}" |
+    curl -fsS --connect-timeout 1 --max-time 1 -H @- "$url" >/dev/null 2>&1
+}
+
 if [[ "${EVO_HOOK_SYNC:-0}" == 1 ]]; then
-  curl -fsS --connect-timeout 1 --max-time 1 "$url" >/dev/null 2>&1 || true
+  send || true
 else
-  (curl -fsS --connect-timeout 1 --max-time 1 "$url" >/dev/null 2>&1 &) || true
+  (send &) || true
 fi
 exit 0
