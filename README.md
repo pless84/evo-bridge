@@ -65,7 +65,7 @@ Install PlatformIO (`pipx install platformio`), then:
 
 ```bash
 cd firmware
-cp include/secrets.h.example include/secrets.h   # then edit: Wi-Fi, EVO_MAC, BRIDGE_TOKEN
+cp include/secrets.h.example include/secrets.h   # then edit: Wi-Fi, EVO_MAC, BRIDGE_TOKEN, SETUP_AP_PASSWORD
 pio run -e esp32dev -t upload
 pio device monitor
 ```
@@ -100,6 +100,27 @@ curl -H "$T" http://evo.local/status
 curl -H "$T" -X POST -H 'Content-Type: text/plain' --data 'Hello from Claude' 'http://evo.local/text?color=ffd23a'
 curl -H "$T" http://evo.local/brightness/60
 ```
+
+## Changing Wi-Fi (no reflash needed)
+
+The bridge remembers the network it's on. `WIFI_SSID` in `secrets.h` is only used on first boot. If it can't join a known network, it opens a setup hotspot:
+
+1. Join the Wi-Fi network **`evo-bridge-setup`** from your phone or laptop. The password is `SETUP_AP_PASSWORD` from `secrets.h`.
+2. The setup page usually opens by itself; otherwise browse to `http://192.168.4.1`.
+3. Choose **Configure WiFi**, pick your network, enter its password and save. The bridge joins it and remembers it.
+
+If nobody completes setup within 5 minutes, the bridge reboots and tries its saved network again. A router restart sorts itself out this way.
+
+To switch networks while the old one is still in range, open the hotspot in one of two ways:
+
+- **Over HTTP:**
+  ```bash
+  curl -H "X-Evo-Token: $(cat ~/.config/evo-bridge/token)" -X POST http://evo.local/wifi/reset
+  ```
+  It reboots into the hotspot and keeps the saved network, in case you don't finish setup.
+- **With the BOOT button:** press EN (reset), then within 3 seconds hold BOOT for a second. Don't hold BOOT *while* pressing EN, because that starts the flasher instead.
+
+The setup page only offers Wi-Fi setup. Its firmware-upload page is turned off, so the hotspot can't be used to replace the firmware.
 
 ## 3. Install the Claude Code hooks
 
@@ -143,7 +164,8 @@ Together, these mean a web page you visit can't drive the display, and other dev
 | `GET /state/<state>?session_id=<id>&t=<ms>` | Report a session's state. `end` removes the session. `t` is optional; older events than the newest seen are dropped. |
 | `POST /text` | Body (or form field `text`) scrolls across the display. Optional `?color=RRGGBB`. The current state returns after a few seconds. |
 | `GET /brightness/<0-100>` | Set display brightness. |
-| `GET /status` | JSON: transport, connected, displayed state, active text, sessions. |
+| `GET /status` | JSON: transport, connected, displayed state, active text, Wi-Fi network, sessions. |
+| `POST /wifi/reset` | Reboot into the Wi-Fi setup hotspot (the saved network is kept). |
 
 ## Changing the art
 

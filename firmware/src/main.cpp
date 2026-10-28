@@ -22,6 +22,7 @@
 #include "state_machine.h"
 #include "states.h"
 #include "transport.h"
+#include "wifi_setup.h"
 
 using evo::State;
 
@@ -210,6 +211,7 @@ static void handleStatus() {
   j += "\"sent\":" + String(sender.sent()) + ",";
   j += "\"brightness\":" + (brightness < 0 ? String("null") : String(brightness)) + ",";
   j += "\"uptime_s\":" + String(now / 1000) + ",";
+  j += "\"wifi\":\"" + jsonEscape(WiFi.SSID()) + "\",";
   j += "\"rssi\":" + String(WiFi.RSSI()) + ",";
   j += "\"sessions\":[";
   bool first = true;
@@ -240,35 +242,18 @@ static void handleRoot() {
               "needs_input|done|error|end>?session_id=ID\n"
               "  POST /text   (body = text, ?color=RRGGBB)\n"
               "  GET  /brightness/<0-100>\n"
-              "  GET  /status\n");
+              "  GET  /status\n"
+              "  POST /wifi/reset   (reboot into the Wi-Fi setup hotspot)\n");
 }
 
 // ---------------------------------------------------------------------------
-
-static void startWifi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.setHostname(BRIDGE_HOSTNAME);
-  WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.printf("[wifi] connecting to %s", WIFI_SSID);
-  const uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
-    delay(250);
-    Serial.print('.');
-  }
-  Serial.println();
-  if (WiFi.status() == WL_CONNECTED)
-    Serial.printf("[wifi] %s\n", WiFi.localIP().toString().c_str());
-  else
-    Serial.println("[wifi] not connected yet; will keep retrying");
-}
 
 void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("\n[evo-bridge] starting");
 
-  startWifi();
+  wifiSetupBegin();
   if (MDNS.begin(BRIDGE_HOSTNAME)) {
     MDNS.addService("http", "tcp", 80);
     Serial.printf("[mdns] http://%s.local\n", BRIDGE_HOSTNAME);
@@ -277,6 +262,13 @@ void setup() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/status", HTTP_GET, [] {
     if (authorized()) handleStatus();
+  });
+  server.on("/wifi/reset", HTTP_POST, [] {
+    if (!authorized()) return;
+    server.send(200, "text/plain",
+                "rebooting into the setup hotspot '" EVO_SETUP_AP_NAME "' (http://192.168.4.1)\n");
+    delay(200);
+    wifiRequestSetup();
   });
   server.on("/text", HTTP_POST, [] {
     if (authorized()) handleText();

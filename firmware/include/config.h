@@ -23,6 +23,22 @@
 #define EVO_ESCAPE_PAYLOAD 0
 #endif
 
+// ---- Wi-Fi setup hotspot ---------------------------------------------------
+#ifndef EVO_SETUP_AP_NAME
+#define EVO_SETUP_AP_NAME "evo-bridge-setup"
+#endif
+// Close the hotspot and reboot after this long without setup.
+#ifndef EVO_SETUP_PORTAL_TIMEOUT_S
+#define EVO_SETUP_PORTAL_TIMEOUT_S 300
+#endif
+// Hold this button (BOOT on most boards) right after power-on to open setup.
+#ifndef EVO_SETUP_BUTTON_PIN
+#define EVO_SETUP_BUTTON_PIN 0
+#endif
+#ifndef EVO_SETUP_BUTTON_WINDOW_MS
+#define EVO_SETUP_BUTTON_WINDOW_MS 3000
+#endif
+
 // ---- Rate limiting ---------------------------------------------------------
 // The Evo drops the connection above ~30 messages/s. 60 ms = ~16 msg/s.
 #ifndef EVO_MSG_INTERVAL_MS
