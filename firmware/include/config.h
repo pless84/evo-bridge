@@ -29,6 +29,14 @@
 #define EVO_MSG_INTERVAL_MS 60
 #endif
 
+// Bluetooth address the bridge uses, e.g. "02:eb:0a:00:00:01". Empty = the
+// chip's own address. Changing it makes the Evo see a brand-new device, which
+// clears up a broken pairing (the Evo keeps a key the bridge no longer has).
+// Use a locally administered address (first byte 02, 06, 0a or 0e).
+#ifndef EVO_BT_LOCAL_MAC
+#define EVO_BT_LOCAL_MAC ""
+#endif
+
 // Bluetooth reconnect backoff.
 #ifndef EVO_BT_BACKOFF_MIN_MS
 #define EVO_BT_BACKOFF_MIN_MS 2000

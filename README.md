@@ -43,7 +43,21 @@ bluetoothctl scan on
 
 Look for a `TimeBox-Evo…` entry and note the address (`11:75:58:…`). Stop scanning with `scan off`. The Divoom app also shows the MAC under device info.
 
-**Check which generation you have.** This code speaks the classic Evo protocol over Bluetooth Classic SPP. If `bluetoothctl info <MAC>` lists the Serial Port profile (UUID `00001101-…`), you're on the classic generation and this code applies. If the device only advertises BLE (the newer "TimeBox-Evo-audio" units built on the Anyka chip), it uses a different protocol and the firmware won't work as is.
+**Check which generation you have.** This code speaks the classic Evo protocol over Bluetooth Classic SPP. The name doesn't tell you: a classic Evo also calls itself `TimeBox-Evo-audio`. What matters is whether it offers a serial port, which you can only see after pairing. Pair it once from the PC, check, then unpair:
+
+```bash
+bluetoothctl pair <MAC>
+```
+```bash
+bluetoothctl info <MAC> | grep 00001101
+```
+```bash
+bluetoothctl remove <MAC>
+```
+
+If the second command prints a line (Serial Port), this code applies. If not, it's the newer BLE-only generation (Anyka chip, see the `divoom-protocol` package), which speaks a different protocol.
+
+**Pairing.** The Evo uses legacy PIN pairing with PIN `0000`. The bridge uses that by default (set `EVO_PIN` in `secrets.h` only if yours differs). After a few wrong PINs the Evo refuses every device, even ones that worked before, until you switch it off and on again.
 
 ## 2. Configure and flash the ESP32
 
@@ -66,8 +80,18 @@ pio device monitor
 - Use `-e firebeetle32e` for the DFRobot FireBeetle ESP32-E. The ESP32-C3 Super Mini **won't work** for this phase because it has no Bluetooth Classic.
 - **Permission denied on `/dev/ttyUSB0` or `/dev/ttyACM0`:** run `sudo usermod -aG dialout $USER`, then log out and back in.
 - **Upload hangs on `Connecting…`:** hold the **BOOT** button until the upload starts.
+- **Upload fails with "Failed to start stub flasher" or "No more data to read from the serial port":** usually a bad USB cable or port. Use a short data cable straight into the computer, not a hub. Uploads run at 115200 baud because many NodeMCU USB chips can't keep up with faster speeds.
 
-The serial monitor should show `[wifi] <ip>`, `[mdns] http://evo.local`, then `[bt] connected`. The Evo switches to the idle pet. Then try:
+The serial monitor should show `[wifi] <ip>`, `[mdns] http://evo.local`, `[bt] Evo offers channel 1: Serial Port 1`, then `[bt] connected`. The Evo switches to the idle pet.
+
+If it shows `[bt] pairing FAILED` instead:
+1. Disconnect the phone app.
+2. Switch the Evo off and on.
+3. Press the ESP32's EN/reset button.
+
+If the Evo still refuses, set `EVO_BT_LOCAL_MAC` in `config.h` (for example `"02:eb:0a:00:00:01"`), so the Evo sees the bridge as a new device.
+
+Then try:
 
 ```bash
 T="X-Evo-Token: $(cat ~/.config/evo-bridge/token)"

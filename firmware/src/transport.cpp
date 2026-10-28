@@ -26,6 +26,8 @@ Transport& makeTransport() {
 #else  // Bluetooth Classic SPP
 
 #include <BluetoothSerial.h>
+#include <esp_gap_bt_api.h>
+#include <esp_mac.h>
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
 #error "Bluetooth Classic is not enabled. Use an original ESP32 (not C3/S2/S3)."
@@ -48,9 +50,34 @@ class BtTransport : public Transport {
       Serial.printf("[bt] EVO_MAC '%s' is not a valid MAC address\n", EVO_MAC);
       return;
     }
+    if (strlen(EVO_BT_LOCAL_MAC) > 0) {
+      uint8_t own[6];
+      if (parseMac(EVO_BT_LOCAL_MAC, own) && esp_iface_mac_addr_set(own, ESP_MAC_BT) == ESP_OK)
+        Serial.printf("[bt] using Bluetooth address %s\n", EVO_BT_LOCAL_MAC);
+      else
+        Serial.printf("[bt] could not set Bluetooth address '%s'\n", EVO_BT_LOCAL_MAC);
+    }
+    // The Evo uses legacy PIN pairing with PIN 0000 (seen in an HCI trace of
+    // Linux pairing it). A wrong PIN fails as "authentication failure" and,
+    // after a few tries, makes the Evo refuse everyone until power-cycled.
+    // Devices that use Secure Simple Pairing instead get a "just works"
+    // confirmation, accepted here.
+    SerialBT.onConfirmRequest([](uint32_t) { SerialBT.confirmReply(true); });
+    SerialBT.onAuthComplete([](boolean ok) {
+      Serial.printf("[bt] pairing %s\n", ok ? "succeeded" : "FAILED");
+    });
     // master = true (we connect to the Evo); BLE off to save RAM.
     SerialBT.begin(BRIDGE_HOSTNAME, true, true);
-    if (strlen(EVO_PIN) > 0) SerialBT.setPin(EVO_PIN, strlen(EVO_PIN));
+    const char* pin = strlen(EVO_PIN) > 0 ? EVO_PIN : "0000";
+    SerialBT.setPin(pin, strlen(pin));
+    // Present as a computer, like d03n3rfr1tz3/esp32-divoom does; some Divoom
+    // devices may refuse an "uncategorized" device.
+    esp_bt_cod_t cod = {};
+    cod.major = 0b00001;        // computer
+    cod.minor = 0b000100;       // handheld
+    cod.service = 0b00000010110;
+    esp_bt_gap_set_cod(cod, ESP_BT_INIT_COD);
+    Serial.printf("[bt] stored pairings: %d\n", SerialBT.getNumberOfBondedDevices());
     // connect() blocks for seconds, so it runs in its own task and never
     // stalls the HTTP server.
     xTaskCreatePinnedToCore(connectTask, "evo-bt", 4096, nullptr, 1, nullptr, 0);
@@ -69,10 +96,21 @@ class BtTransport : public Transport {
  private:
   static void connectTask(void*) {
     uint32_t backoff = EVO_BT_BACKOFF_MIN_MS;
+    int channel = 0;  // 0 = let the library look it up
     for (;;) {
       if (!SerialBT.connected(0)) {
-        Serial.printf("[bt] connecting to %s ...\n", EVO_MAC);
-        if (SerialBT.connect(evoAddr)) {
+        if (channel == 0) {
+          // Ask the Evo which RFCOMM channels it offers and log them, so a
+          // failed connect can be told apart from a missing service.
+          auto chans = SerialBT.getChannels(BTAddress(evoAddr));
+          for (const auto& c : chans) {
+            Serial.printf("[bt] Evo offers channel %d: %s\n", c.first, c.second.c_str());
+            if (channel == 0) channel = c.first;
+          }
+          if (chans.empty()) Serial.println("[bt] service lookup found no channels");
+        }
+        Serial.printf("[bt] connecting to %s (channel %d) ...\n", EVO_MAC, channel);
+        if (SerialBT.connect(evoAddr, channel, ESP_SPP_SEC_ENCRYPT | ESP_SPP_SEC_AUTHENTICATE)) {
           Serial.println("[bt] connected");
           backoff = EVO_BT_BACKOFF_MIN_MS;
         } else {

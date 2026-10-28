@@ -6,3 +6,5 @@ tools/art/preview/
 .omc/
 .remember/
 tools/test/.tmp/
+*.pcapng
+*.btsnoop
