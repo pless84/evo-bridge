@@ -121,9 +121,11 @@ echo '{"hook_event_name":"PreToolUse","session_id":"t1","tool_name":"Bash"}' | E
 | `PreToolUse` | working variant for the tool (`AskUserQuestion` / `ExitPlanMode` → needs_input) |
 | `PostToolUse` | same working variant, or `error` if the result says `is_error` |
 | `PostToolUseFailure` | error |
+| `PermissionRequest` | needs_input |
 | `Notification` | needs_input, except the "waiting for your input" reminder after a finished turn |
 | `SubagentStop` | working (the main agent continues) |
 | `Stop` | done |
+| `StopFailure` | error (the turn ended with an API error) |
 | `SessionEnd` | removes the session |
 
 ## HTTP API

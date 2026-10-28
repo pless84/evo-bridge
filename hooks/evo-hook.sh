@@ -55,6 +55,8 @@ case "$event" in
     if [[ "$(field .tool_response.is_error)" == "true" ]]; then state=error
     else state="$(tool_state)"; fi ;;
   PostToolUseFailure) state=error ;;
+  PermissionRequest)  state=needs_input ;;
+  StopFailure)        state=error ;;
   Notification)
     # "Claude is waiting for your input" fires ~60 s after a finished turn;
     # keep showing done for that. Permission prompts etc. need you now.

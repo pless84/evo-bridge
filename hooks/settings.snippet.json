@@ -1,13 +1,117 @@
 {
   "hooks": {
-    "SessionStart":       [{ "hooks": [{ "type": "command", "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh" }] }],
-    "UserPromptSubmit":   [{ "hooks": [{ "type": "command", "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh" }] }],
-    "PreToolUse":         [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh" }] }],
-    "PostToolUse":        [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh" }] }],
-    "PostToolUseFailure": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh" }] }],
-    "Notification":       [{ "hooks": [{ "type": "command", "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh" }] }],
-    "SubagentStop":       [{ "hooks": [{ "type": "command", "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh" }] }],
-    "Stop":               [{ "hooks": [{ "type": "command", "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh" }] }],
-    "SessionEnd":         [{ "hooks": [{ "type": "command", "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh" }] }]
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/ABSOLUTE/PATH/TO/hooks/evo-hook.sh"
+          }
+        ]
+      }
+    ]
   }
 }
