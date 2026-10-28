@@ -120,7 +120,7 @@ To switch networks while the old one is still in range, open the hotspot in one 
   It reboots into the hotspot and keeps the saved network, in case you don't finish setup.
 - **With the BOOT button:** press EN (reset), then within 3 seconds hold BOOT for a second. Don't hold BOOT *while* pressing EN, because that starts the flasher instead.
 
-The setup page only offers Wi-Fi setup. Its firmware-upload page is turned off, so the hotspot can't be used to replace the firmware.
+The setup page only offers Wi-Fi setup. Its firmware-upload, erase and info pages are blocked (they return 403), so the hotspot can't be used to replace the firmware.
 
 ## 3. Install the Claude Code hooks
 

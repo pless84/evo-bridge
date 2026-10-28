@@ -70,6 +70,18 @@ static void configure(WiFiManager& wm) {
   const char* menu[] = {"wifi", "exit"};
   wm.setMenu(menu, 2);
   wm.setShowInfoErase(false);
+  // Hiding menu items does not remove their pages: WiFiManager registers
+  // /update and /u (firmware upload), /erase, /info, /restart and /param*
+  // regardless. This callback runs before WiFiManager adds its routes, and
+  // the web server uses the first matching handler, so these deny handlers
+  // win. They have no upload callback, so an uploaded image is discarded.
+  wm.setWebServerCallback([&wm]() {
+    static const char* const kBlocked[] = {"/update", "/u", "/erase", "/info",
+                                           "/restart", "/param", "/paramsave"};
+    for (const char* path : kBlocked) {
+      wm.server->on(path, [&wm]() { wm.server->send(403, "text/plain", "Not available\n"); });
+    }
+  });
   wm.setAPCallback([](WiFiManager*) {
     Serial.printf("[wifi] setup hotspot '%s' is open: join it and go to http://192.168.4.1\n",
                   EVO_SETUP_AP_NAME);
