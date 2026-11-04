@@ -35,6 +35,7 @@ firmware/   PlatformIO project for the ESP32 bridge
   include/secrets.h       your Wi-Fi + Evo MAC (gitignored; copy the .example)
   test/host/run.sh        PC-side tests for the encoder and state machine
 bridge/     laptop bridge: HTTP server + Bluetooth link, no ESP32 needed
+companion/  tray app for the laptop bridge: status, brightness, settings, service
 hooks/      evo-hook.sh + settings snippet for ~/.claude/settings.json
 tools/      pixel art + the script that turns it into states.h
 ```
@@ -52,6 +53,24 @@ Needs Node 18+ and a Python with Bluetooth sockets. Fedora's `/usr/bin/python3` 
 The laptop bridge reads the art straight from `tools/art`, so after `npm run build` just restart it; there's nothing to flash. It accepts requests only from this computer, with the same token, `Host` and `Origin` checks as the ESP32. Its state machine (`bridge/state-machine.js`) is a port of the firmware's; `node bridge/test-state-machine.js` runs the same tests against it.
 
 `bridge/rfcomm-pipe.py` holds the Bluetooth connection: bytes from the bridge go to the Evo, and it exits when the link drops so the bridge can reconnect.
+
+Settings live in `~/.config/evo-bridge/config.json`: which Evo, brightness, and the timings from [Tuning](#tuning) (in ms; `idleToClockMs: 0` turns the clock off). Every field is optional. The companion app edits this file for you, and changes apply without a restart.
+
+### Companion app
+
+A small tray app for the laptop bridge (Qt, so it looks native on KDE):
+
+- **Status:** what the Evo shows, whether it's connected, and each Claude Code session. The tray icon takes the pet's colour.
+- **Display:** brightness, send scrolling text, preview each animation.
+- **Settings:** pick the Evo from your paired devices, and change the timings.
+- **Service:** start, stop or restart the bridge, start it at login, and read its log.
+
+```bash
+sudo dnf install python3-pyside6   # if it's missing
+companion/install.sh               # adds "Evo companion" to the app menu
+```
+
+Or run `companion/evo-companion.py` directly. Closing the window keeps it in the tray; quit from the tray menu. The Service tab can also open it in the tray at login. `companion/install.sh --remove` takes the menu entry away.
 
 ## 1. Find the Evo's Bluetooth MAC
 
@@ -185,6 +204,8 @@ Together, these mean a web page you visit can't drive the display, and other dev
 | `POST /text` | Body (or form field `text`) scrolls across the display. Optional `?color=RRGGBB`. The current state returns after a few seconds. |
 | `GET /brightness/<0-100>` | Set display brightness. |
 | `GET /status` | JSON: transport, connected, displayed state, active text, Wi-Fi network, sessions. |
+| `GET /config`, `POST /config` | Laptop bridge only: read or change the settings (JSON, see `bridge/config.js`). |
+| `GET /preview/<state>` | Laptop bridge only: show that state's animation for 5 seconds. |
 | `POST /wifi/reset` | ESP32 only: reboot into the Wi-Fi setup hotspot (the saved network is kept). |
 
 ## Changing the art
@@ -201,7 +222,7 @@ Reflash afterwards. The firmware only replays the bytes generated here; all imag
 
 ## Tuning
 
-Everything is in `firmware/include/config.h`, and each value can be overridden with a `-D` flag in `platformio.ini`:
+Laptop bridge: use the companion app, or edit `~/.config/evo-bridge/config.json`. ESP32: everything is in `firmware/include/config.h`, and each value can be overridden with a `-D` flag in `platformio.ini`:
 
 - `EVO_MSG_INTERVAL_MS` (60): gap between messages. The Evo drops the link above about 30 messages/s.
 - `EVO_WORKING_DEBOUNCE_MS`, `EVO_MIN_DISPLAY_MS`, `EVO_ERROR_HOLD_MS`: anti-flicker timings.
@@ -215,6 +236,7 @@ Everything is in `firmware/include/config.h`, and each value can be overridden w
 firmware/test/host/run.sh
 (cd tools && npm test)
 node bridge/test-state-machine.js
+node bridge/test-config.js
 ```
 
 The first command compiles the protocol encoder and state machine for the PC. It checks them against byte-for-byte output from the Node library (text, brightness, framing of every state) and covers debounce, error hold, multi-session, out-of-order events, stale sessions, timeout, and `millis()` wrap-around behavior. The second checks the PC-side encoder against the library's frozen output (all starter states, text, brightness) and tests GIF compositing and scaling.
