@@ -4,13 +4,14 @@
 # the HTTP call runs in the background and every error is swallowed.
 #
 # Environment:
-#   EVO_URL        bridge address (default http://evo.local; an IP is faster)
+#   EVO_URL        bridge address (default http://127.0.0.1:8787, the laptop
+#                  bridge; http://evo.local or the board's IP for the ESP32)
 #   EVO_TOKEN      shared secret (BRIDGE_TOKEN in the firmware's secrets.h), or
 #   EVO_TOKEN_FILE file holding it (default ~/.config/evo-bridge/token)
 #   EVO_HOOK_SYNC  1 = wait for the request (debugging)
 #   EVO_HOOK_DEBUG 1 = print the URL instead of calling it
 
-EVO_URL="${EVO_URL:-http://evo.local}"
+EVO_URL="${EVO_URL:-http://127.0.0.1:8787}"
 EVO_TOKEN_FILE="${EVO_TOKEN_FILE:-$HOME/.config/evo-bridge/token}"
 if [[ -z "${EVO_TOKEN:-}" && -r "$EVO_TOKEN_FILE" ]]; then
   EVO_TOKEN="$(tr -d '[:space:]' < "$EVO_TOKEN_FILE" 2>/dev/null)"

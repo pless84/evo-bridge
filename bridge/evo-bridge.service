@@ -1,0 +1,16 @@
+# systemd user service for the laptop bridge. Install:
+#   mkdir -p ~/.config/systemd/user
+#   sed "s|@REPO@|$PWD|" bridge/evo-bridge.service > ~/.config/systemd/user/evo-bridge.service
+#   systemctl --user daemon-reload && systemctl --user enable --now evo-bridge
+# Logs: journalctl --user -u evo-bridge -f
+[Unit]
+Description=Evo bridge (Claude Code status on the Timebox Evo over Bluetooth)
+After=bluetooth.target
+
+[Service]
+ExecStart=/usr/bin/env node @REPO@/bridge/evo-bridge.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

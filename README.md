@@ -3,8 +3,13 @@
 Turns a Divoom Timebox Evo (16×16 LED speaker) into a status light for Claude Code. A small pet on the display shows whether Claude is thinking, working, waiting for you, done, or hit an error.
 
 ```
-Claude Code hooks ──curl──▶ ESP32 (Wi-Fi, http://evo.local) ──Bluetooth SPP──▶ Timebox Evo
+Claude Code hooks ──curl──▶ laptop bridge (http://127.0.0.1:8787) ──laptop Bluetooth──▶ Timebox Evo
 ```
+
+There are two ways to run the bridge, with the same HTTP API and the same art:
+
+- **Laptop bridge** (current setup, no extra hardware): a small Node program on the computer running Claude Code talks to the Evo over the laptop's own Bluetooth. See [Laptop bridge](#laptop-bridge).
+- **ESP32 bridge:** a board on Wi-Fi (`http://evo.local`) holds the Bluetooth link, so the Evo works for any computer on the network. See steps 1–2 below, and set `EVO_URL=http://evo.local` for the hook.
 
 | State | Looks like | Sent when |
 |---|---|---|
@@ -29,9 +34,24 @@ firmware/   PlatformIO project for the ESP32 bridge
   include/config.h        timings, rate limit, transport, escaping flag
   include/secrets.h       your Wi-Fi + Evo MAC (gitignored; copy the .example)
   test/host/run.sh        PC-side tests for the encoder and state machine
+bridge/     laptop bridge: HTTP server + Bluetooth link, no ESP32 needed
 hooks/      evo-hook.sh + settings snippet for ~/.claude/settings.json
 tools/      pixel art + the script that turns it into states.h
 ```
+
+## Laptop bridge
+
+Needs Node 18+ and a Python with Bluetooth sockets. Fedora's `/usr/bin/python3` has them; Homebrew's Python doesn't, so the bridge uses `/usr/bin/python3` unless `EVO_PYTHON` says otherwise.
+
+1. Pair the Evo with the laptop in Bluetooth settings (PIN `0000` if asked). Unplug the ESP32 bridge if it is running: the Evo takes only one data connection.
+2. Install the art tools once: `(cd tools && npm install)`.
+3. Put a random token in `~/.config/evo-bridge/token` (for example `openssl rand -hex 16`). The hook reads the same file.
+4. Run it: `node bridge/evo-bridge.js`. It finds the paired device named `TimeBox…` (or set `EVO_MAC`), listens on `127.0.0.1:8787` (`EVO_PORT`), and reconnects by itself if the Evo goes away.
+5. To start it automatically at login, install the systemd user service; see the comments in `bridge/evo-bridge.service`.
+
+The laptop bridge reads the art straight from `tools/art`, so after `npm run build` just restart it; there's nothing to flash. It accepts requests only from this computer, with the same token, `Host` and `Origin` checks as the ESP32. Its state machine (`bridge/state-machine.js`) is a port of the firmware's; `node bridge/test-state-machine.js` runs the same tests against it.
+
+`bridge/rfcomm-pipe.py` holds the Bluetooth connection: bytes from the bridge go to the Evo, and it exits when the link drops so the bridge can reconnect.
 
 ## 1. Find the Evo's Bluetooth MAC
 
@@ -127,7 +147,7 @@ The setup page only offers Wi-Fi setup. Its firmware-upload, erase and info page
 1. Make the script executable (it already is in git): `chmod +x hooks/evo-hook.sh`.
 2. Merge `hooks/settings.snippet.json` into the `hooks` section of `~/.claude/settings.json`. Replace `/ABSOLUTE/PATH/TO` with this repo's path. If you already have hooks for an event, add this entry to its list instead of replacing it.
 3. Save the bridge token for the hook in `~/.config/evo-bridge/token` (see step 2), or set `EVO_TOKEN`. The hook passes it to curl on stdin, so it doesn't show up in the process list.
-4. Optional: if `evo.local` resolves slowly on your network, set `EVO_URL` to the bridge's IP address (for example in your shell profile, or in the `env` section of `settings.json`): `"env": { "EVO_URL": "http://192.168.1.50" }`.
+4. The hook talks to the laptop bridge (`http://127.0.0.1:8787`) by default. For the ESP32, set `EVO_URL` to `http://evo.local` or, faster, the board's IP address (for example in your shell profile, or in the `env` section of `settings.json`): `"env": { "EVO_URL": "http://192.168.1.50" }`.
 
 The hook sends its request in the background with a 1-second timeout. If the bridge is unplugged, Claude Code doesn't notice. Each request carries the event time (`&t=`), so the bridge ignores requests that arrive out of order. To see what the hook would send, run:
 
@@ -154,7 +174,7 @@ echo '{"hook_event_name":"PreToolUse","session_id":"t1","tool_name":"Bash"}' | E
 Every endpoint except `/` requires all three of these:
 
 - **`X-Evo-Token` header** matching `BRIDGE_TOKEN`. Otherwise the bridge returns 401.
-- **`Host` header** of `evo.local`, `evo` or the bridge's IP. Otherwise it returns 403. This blocks web pages from reaching the bridge through DNS rebinding.
+- **`Host` header** of `evo.local`, `evo` or the bridge's IP (laptop bridge: `127.0.0.1:8787` or `localhost:8787`). Otherwise it returns 403. This blocks web pages from reaching the bridge through DNS rebinding.
 - **No `Origin` header.** Otherwise it returns 403. Browsers add one; curl and the hook don't.
 
 Together, these mean a web page you visit can't drive the display, and other devices on your network need the token. The token travels in plain HTTP, so someone sniffing your Wi-Fi could still read it. That's acceptable for a display, but don't reuse the token anywhere else.
@@ -165,7 +185,7 @@ Together, these mean a web page you visit can't drive the display, and other dev
 | `POST /text` | Body (or form field `text`) scrolls across the display. Optional `?color=RRGGBB`. The current state returns after a few seconds. |
 | `GET /brightness/<0-100>` | Set display brightness. |
 | `GET /status` | JSON: transport, connected, displayed state, active text, Wi-Fi network, sessions. |
-| `POST /wifi/reset` | Reboot into the Wi-Fi setup hotspot (the saved network is kept). |
+| `POST /wifi/reset` | ESP32 only: reboot into the Wi-Fi setup hotspot (the saved network is kept). |
 
 ## Changing the art
 
@@ -194,6 +214,7 @@ Everything is in `firmware/include/config.h`, and each value can be overridden w
 ```bash
 firmware/test/host/run.sh
 (cd tools && npm test)
+node bridge/test-state-machine.js
 ```
 
 The first command compiles the protocol encoder and state machine for the PC. It checks them against byte-for-byte output from the Node library (text, brightness, framing of every state) and covers debounce, error hold, multi-session, out-of-order events, stale sessions, timeout, and `millis()` wrap-around behavior. The second checks the PC-side encoder against the library's frozen output (all starter states, text, brightness) and tests GIF compositing and scaling.
