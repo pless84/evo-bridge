@@ -13,14 +13,17 @@ const { STATES, paletteFor } = require('./art/sprites');
 
 const OUT_HEADER = path.join(__dirname, '..', 'firmware', 'include', 'states.h');
 
+// Your own art; EVO_ART_CUSTOM_DIR moves it (used by the tests).
+const CUSTOM_DIR = process.env.EVO_ART_CUSTOM_DIR || path.join(__dirname, 'art', 'custom');
+
 function sourceFor(state, { starterOnly = false } = {}) {
-  const candidates = starterOnly
-    ? [`gif/${state}.gif`]
-    : [`custom/${state}.gif`, `custom/${state}.png`, `gif/${state}.gif`];
-  for (const f of candidates) {
-    const p = path.join(__dirname, 'art', f);
-    if (fs.existsSync(p)) return { file: p, custom: f.startsWith('custom/') };
-  }
+  const candidates = starterOnly ? [] : [
+    path.join(CUSTOM_DIR, `${state}.gif`),
+    path.join(CUSTOM_DIR, `${state}.png`),
+  ];
+  for (const p of candidates) if (fs.existsSync(p)) return { file: p, custom: true };
+  const starter = path.join(__dirname, 'art', 'gif', `${state}.gif`);
+  if (fs.existsSync(starter)) return { file: starter, custom: false };
   throw new Error(`no art for state '${state}' (run \`npm run art\` first)`);
 }
 
@@ -98,7 +101,7 @@ async function buildHeader(opts = {}, log = () => {}) {
   return h;
 }
 
-module.exports = { buildHeader, buildStates };
+module.exports = { buildHeader, buildStates, stateMessages, sourceFor, checkFrame, CUSTOM_DIR };
 
 if (require.main === module) {
   buildHeader({}, console.log)

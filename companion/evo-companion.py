@@ -113,6 +113,9 @@ class Bridge:
     def get(self, path, cb=None):
         self._wire(self.nam.get(self._request(path)), cb)
 
+    def delete(self, path, cb=None):
+        self._wire(self.nam.deleteResource(self._request(path)), cb)
+
     def post(self, path, body, cb=None, ctype="application/json"):
         req = self._request(path)
         req.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, ctype)
@@ -132,6 +135,7 @@ class Window(QMainWindow):
         self.config_loading = False
         self.text_color = QColor("#ffffff")
         self.quitting = False
+        self.editor = None
 
         tabs = QTabWidget()
         tabs.addTab(self._status_tab(), "Status")
@@ -211,6 +215,11 @@ class Window(QMainWindow):
         h.addWidget(self.color_btn)
         h.addWidget(send)
         v.addWidget(g)
+
+        edit = QPushButton("Edit the animations…")
+        edit.setToolTip("Draw your own pixel art for each state")
+        edit.clicked.connect(lambda: self.open_editor())
+        v.addWidget(edit)
 
         g = QGroupBox("Preview an animation (5 s)")
         grid = QGridLayout(g)
@@ -323,8 +332,10 @@ class Window(QMainWindow):
         self.tray = QSystemTrayIcon(dot_icon(OFFLINE), self)
         menu = QMenu()
         show = QAction("Open", self, triggered=self.show_window)
+        art = QAction("Art editor…", self, triggered=lambda: self.open_editor())
         quit_ = QAction("Quit", self, triggered=self.quit)
         menu.addAction(show)
+        menu.addAction(art)
         menu.addSeparator()
         menu.addAction(quit_)
         self.tray.setContextMenu(menu)
@@ -543,6 +554,14 @@ class Window(QMainWindow):
             self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
         self.run(["journalctl", "--user", "-u", SERVICE, "-n", "200", "--no-pager", "-o", "cat"], done)
 
+    def open_editor(self, state=None):
+        from art_editor import ArtEditor  # next to this file
+        if self.editor is None:
+            self.editor = ArtEditor(self.bridge)
+            self.editor.setWindowIcon(self.windowIcon())
+            self.editor.resize(860, 560)
+        self.editor.open_state(state)
+
     def set_app_autostart(self, on):
         try:
             if on:
@@ -578,6 +597,8 @@ class Window(QMainWindow):
             e.accept()
 
     def quit(self):
+        if self.editor and self.editor.isVisible() and not self.editor.close():
+            return  # unsaved art: the user cancelled
         self.quitting = True
         QApplication.quit()
 

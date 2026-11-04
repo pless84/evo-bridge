@@ -61,7 +61,7 @@ Settings live in `~/.config/evo-bridge/config.json`: which Evo, brightness, and 
 A small tray app for the laptop bridge (Qt, so it looks native on KDE):
 
 - **Status:** what the Evo shows, whether it's connected, and each Claude Code session. The tray icon takes the pet's colour.
-- **Display:** brightness, send scrolling text, preview each animation.
+- **Display:** brightness, send scrolling text, preview each animation, and open the art editor.
 - **Settings:** pick the Evo from your paired devices, and change the timings.
 - **Service:** start, stop or restart the bridge, start it at login, and read its log.
 
@@ -69,6 +69,17 @@ A small tray app for the laptop bridge (Qt, so it looks native on KDE):
 sudo dnf install python3-pyside6   # if it's missing
 companion/install.sh               # adds "Evo companion" to the app menu
 ```
+
+#### Art editor
+
+**Display → Edit the animations…** (or **Art editor…** in the tray menu) opens a 16×16 pixel editor for each state's animation:
+
+- Pencil, fill and colour picker. Left-click paints with the chosen colour; right-click paints black, which means the LEDs are off.
+- A frame list: add, duplicate, delete, clear and reorder frames, and set how long each one shows (in 10 ms steps).
+- Onion skin (shows the previous frame faintly), a live preview, and undo/redo (Ctrl+Z / Ctrl+Shift+Z).
+- **Try on Evo** shows your version for a few seconds without saving. **Save** writes `tools/art/custom/<state>.gif`, and the laptop bridge uses it right away. **Use starter art** deletes your version.
+
+Saved art is an ordinary 16×16 GIF in the folder described in [Changing the art](#changing-the-art), so the ESP32 can use it too: run `npm run states` in `tools/` and reflash.
 
 Or run `companion/evo-companion.py` directly. Closing the window keeps it in the tray; quit from the tray menu. The Service tab can also open it in the tray at login. `companion/install.sh --remove` takes the menu entry away.
 
@@ -206,6 +217,9 @@ Together, these mean a web page you visit can't drive the display, and other dev
 | `GET /status` | JSON: transport, connected, displayed state, active text, Wi-Fi network, sessions. |
 | `GET /config`, `POST /config` | Laptop bridge only: read or change the settings (JSON, see `bridge/config.js`). |
 | `GET /preview/<state>` | Laptop bridge only: show that state's animation for 5 seconds. |
+| `GET /art`, `GET /art/<state>` | Laptop bridge only: which states have custom art; a state's frames as JSON. |
+| `POST /art/<state>` | Laptop bridge only: save frames (`{"frames":[{"pixels":[256 × "rrggbb"],"ms":100}]}`) as `tools/art/custom/<state>.gif`. |
+| `POST /art/<state>/try`, `DELETE /art/<state>` | Laptop bridge only: show frames without saving; go back to the starter art. |
 | `POST /wifi/reset` | ESP32 only: reboot into the Wi-Fi setup hotspot (the saved network is kept). |
 
 ## Changing the art
@@ -237,6 +251,7 @@ firmware/test/host/run.sh
 (cd tools && npm test)
 node bridge/test-state-machine.js
 node bridge/test-config.js
+node bridge/test-art-routes.js
 ```
 
 The first command compiles the protocol encoder and state machine for the PC. It checks them against byte-for-byte output from the Node library (text, brightness, framing of every state) and covers debounce, error hold, multi-session, out-of-order events, stale sessions, timeout, and `millis()` wrap-around behavior. The second checks the PC-side encoder against the library's frozen output (all starter states, text, brightness) and tests GIF compositing and scaling.

@@ -10,6 +10,11 @@
 //   GET  /config               settings, defaults and the file they live in
 //   POST /config               JSON with the settings to change (see config.js)
 //   GET  /preview/<state>      show a state's animation for a few seconds
+//   GET  /art                  which states have your own art
+//   GET  /art/<state>          a state's frames: { frames: [{ pixels: [256 'rrggbb'], ms }] }
+//   POST /art/<state>          save frames as tools/art/custom/<state>.gif and use them
+//   POST /art/<state>/try      show frames on the Evo without saving
+//   DELETE /art/<state>        back to the starter art
 //
 // Listens on 127.0.0.1 only. Everything except "/" needs the X-Evo-Token
 // header, a Host header of 127.0.0.1/localhost, and no Origin header (so web
@@ -32,7 +37,8 @@ const path = require('path');
 const { spawn, execFile } = require('child_process');
 
 const encode = require('../tools/evo-encode');
-const { buildStates } = require('../tools/build-states');
+const { buildStates, stateMessages: buildStateMessages, sourceFor } = require('../tools/build-states');
+const artIo = require('../tools/art-io');
 const { StateMachine, NAMES, isWorking } = require('./state-machine');
 const config = require('./config');
 const MSG_INTERVAL_MS = 60;
@@ -42,6 +48,8 @@ const TEXT_BASE_MS = 4000;
 const TEXT_PER_CHAR_MS = 350;
 const TEXT_MAX_MS = 30000;
 const PREVIEW_MS = 5000;
+const TRY_MAX_MS = 15000;
+const ART_BODY_LIMIT = 512 * 1024;
 
 const PORT = Number(process.env.EVO_PORT || 8787);
 const CHANNEL = Number(process.env.EVO_CHANNEL || 1);
@@ -306,6 +314,89 @@ function handlePreview(name, res) {
   send(res, 200, 'ok\n');
 }
 
+// ---- art (the companion's pixel editor) ----
+
+async function readFrames(req) {
+  const body = JSON.parse(await readBody(req, ART_BODY_LIMIT));
+  const frames = body && body.frames;
+  const p = artIo.problems(frames);
+  if (p.length) throw Object.assign(new Error(p.join('\n')), { status: 400 });
+  return frames.map(({ pixels, ms }) => ({ pixels, ms }));
+}
+
+// Saves and deletes of one state run one at a time, so the art in use always
+// matches the file on disk.
+const artQueue = new Map();
+function serialized(state, fn) {
+  const run = (artQueue.get(state) || Promise.resolve()).then(fn, fn);
+  artQueue.set(state, run.catch(() => {}));
+  return run;
+}
+
+// Rebuild a state's messages after its file changed. The change is already
+// on disk, so a failure here is reported but not undone.
+async function reloadState(state) {
+  STATES[state] = { msgs: (await buildStateMessages(state)).msgs };
+  if (!overlay) showCurrent(); // the displayed state may be the one that changed
+}
+
+async function handleArt(req, url, res) {
+  const parts = url.pathname.split('/').filter(Boolean); // ['art', state?, 'try'?]
+  if (parts.length === 1 && req.method === 'GET') {
+    const states = artIo.EDITABLE.map((state) => ({ state, custom: sourceFor(state).custom }));
+    return send(res, 200, JSON.stringify({ states, dir: artIo.CUSTOM_DIR }) + '\n', 'application/json');
+  }
+  const state = parts[1];
+  if (!artIo.isEditable(state) || parts.length > 3 || (parts.length === 3 && parts[2] !== 'try')) {
+    return send(res, 404, 'not found\n');
+  }
+  try {
+    if (parts.length === 3 && req.method === 'POST') {
+      const frames = await readFrames(req);
+      const loop = frames.reduce((a, f) => a + f.ms, 0);
+      overlay = { kind: 'preview', label: state, msgs: encode.animation(frames),
+        until: now() + Math.min(Math.max(PREVIEW_MS, loop * 2), TRY_MAX_MS) };
+      showCurrent();
+      return send(res, 200, 'ok\n');
+    }
+    if (parts.length !== 2) return send(res, 405, 'method not allowed\n');
+    if (req.method === 'GET') {
+      return send(res, 200, JSON.stringify(await artIo.readArt(state)) + '\n', 'application/json');
+    }
+    const reloaded = async (what) => {
+      try {
+        await reloadState(state);
+        return 'ok\n';
+      } catch (e) {
+        log(`[art] ${state}: ${what}, but loading it failed: ${e.message}`);
+        return `${what}, but the bridge could not load it (${e.message}); restart the bridge\n`;
+      }
+    };
+    if (req.method === 'POST') {
+      const frames = await readFrames(req);
+      const reply = await serialized(state, async () => {
+        const file = await artIo.writeArt(state, frames);
+        log(`[art] ${state}: saved ${frames.length} frame(s) to ${file}`);
+        return reloaded('Saved');
+      });
+      return send(res, 200, reply);
+    }
+    if (req.method === 'DELETE') {
+      const reply = await serialized(state, async () => {
+        artIo.removeArt(state);
+        log(`[art] ${state}: back to the starter art`);
+        return reloaded('Removed');
+      });
+      return send(res, 200, reply);
+    }
+    return send(res, 405, 'method not allowed\n');
+  } catch (e) {
+    if (e.message === 'too long') return send(res, 413, 'too much art\n');
+    if (e instanceof SyntaxError) return send(res, 400, 'body must be JSON\n');
+    return send(res, e.status || 500, `${e.message}\n`);
+  }
+}
+
 function configJson() {
   return JSON.stringify({ config: cfg, defaults: config.DEFAULTS, file: config.FILE,
     mac_from_env: Boolean(process.env.EVO_MAC) }) + '\n';
@@ -355,7 +446,8 @@ const ROOT = 'Evo bridge (laptop)\n'
   + '  GET  /brightness/<0-100>\n'
   + '  GET  /status\n'
   + '  GET  /config, POST /config (JSON)\n'
-  + '  GET  /preview/<state>\n';
+  + '  GET  /preview/<state>\n'
+  + '  GET|POST|DELETE /art/<state>, POST /art/<state>/try\n';
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://bridge');
@@ -367,6 +459,7 @@ const server = http.createServer((req, res) => {
   if (p.startsWith('/state/')) return handleState(p.slice(7), url, res);
   if (p.startsWith('/brightness/')) return handleBrightness(p.slice(12), res);
   if (p.startsWith('/preview/')) return handlePreview(p.slice(9), res);
+  if (p === '/art' || p.startsWith('/art/')) return handleArt(req, url, res).catch(() => send(res, 500, 'error\n'));
   if (p === '/config' && req.method === 'GET') return send(res, 200, configJson(), 'application/json');
   if (p === '/config' && req.method === 'POST') return handleConfig(req, res).catch(() => send(res, 500, 'error\n'));
   send(res, 404, 'not found\n');

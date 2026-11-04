@@ -108,6 +108,30 @@ test('larger PNGs are scaled down with nearest neighbour', async () => {
   assert.strictEqual(new Set(frames[0].pixels).size, 3);    // no blended colours
 });
 
+test('editor art round-trips through GIF unchanged', async () => {
+  const artIo = require('./art-io');
+  fs.mkdirSync(TMP, { recursive: true });
+  for (const state of artIo.EDITABLE) {
+    const { frames, custom } = await artIo.readArt(state);
+    assert.deepStrictEqual(artIo.problems(frames), [], state);
+    const file = path.join(TMP, `${state}.gif`);
+    fs.writeFileSync(file, await artIo.gifBuffer(frames));
+    const back = (await loadArt(file)).frames;
+    assert.deepStrictEqual(back, frames, `${state} (${custom ? 'custom' : 'starter'})`);
+  }
+});
+
+test('editor art is validated', () => {
+  const { problems } = require('./art-io');
+  const frame = (over = {}) => ({ pixels: Array(256).fill('000000'), ms: 100, ...over });
+  assert.deepStrictEqual(problems([frame()]), []);
+  assert.ok(problems([]).length);
+  assert.ok(problems([frame({ ms: 105 })]).length);         // GIF has 10 ms steps
+  assert.ok(problems([frame({ pixels: Array(255).fill('000000') })]).length);
+  assert.ok(problems([frame({ pixels: Array(256).fill('FFFFFF') })]).length);  // lowercase only
+  assert.ok(problems(Array(65).fill(frame())).length);
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {
