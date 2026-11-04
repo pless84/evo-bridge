@@ -2,29 +2,44 @@
 // writes them to firmware/include/states.h. The firmware only replays these
 // bytes; it never encodes images itself.
 //
-// Source per state, first match wins:
-//   art/custom/<state>.gif | art/custom/<state>.png   (your own art)
-//   art/gif/<state>.gif                                (starter art, `npm run art`)
+// One theme at a time (art/themes/): `node build-states.js --theme robot`, or
+// EVO_THEME; default blip. Source per state, first match wins:
+//   art/custom/<theme>/<state>.gif | .png    (your own art, e.g. from the editor)
+//   art/custom/<state>.gif | .png            (blip only: the older location)
+//   the theme's starter GIF                  (`npm run art`)
 const fs = require('fs');
 const path = require('path');
 const encode = require('./evo-encode');
 const { loadArt } = require('./load-art');
-const { STATES, paletteFor } = require('./art/sprites');
+const themes = require('./art/themes');
 
 const OUT_HEADER = path.join(__dirname, '..', 'firmware', 'include', 'states.h');
 
 // Your own art; EVO_ART_CUSTOM_DIR moves it (used by the tests).
 const CUSTOM_DIR = process.env.EVO_ART_CUSTOM_DIR || path.join(__dirname, 'art', 'custom');
 
-function sourceFor(state, { starterOnly = false } = {}) {
-  const candidates = starterOnly ? [] : [
-    path.join(CUSTOM_DIR, `${state}.gif`),
-    path.join(CUSTOM_DIR, `${state}.png`),
-  ];
-  for (const p of candidates) if (fs.existsSync(p)) return { file: p, custom: true };
-  const starter = path.join(__dirname, 'art', 'gif', `${state}.gif`);
+function themeOf(theme) {
+  const id = theme || themes.DEFAULT_THEME;
+  if (!themes.isTheme(id)) throw new Error(`unknown theme '${id}' (${Object.keys(themes.THEMES).join(', ')})`);
+  return id;
+}
+
+// Where your own art for a state may be, in order of preference.
+function customFiles(state, theme) {
+  const id = themeOf(theme);
+  const files = ['gif', 'png'].map((ext) => path.join(CUSTOM_DIR, id, `${state}.${ext}`));
+  if (id === themes.DEFAULT_THEME) files.push(...['gif', 'png'].map((ext) => path.join(CUSTOM_DIR, `${state}.${ext}`)));
+  return files;
+}
+
+function sourceFor(state, { starterOnly = false, theme } = {}) {
+  const id = themeOf(theme);
+  if (!starterOnly) {
+    for (const p of customFiles(state, id)) if (fs.existsSync(p)) return { file: p, custom: true };
+  }
+  const starter = path.join(themes.gifDir(id), `${state}.gif`);
   if (fs.existsSync(starter)) return { file: starter, custom: false };
-  throw new Error(`no art for state '${state}' (run \`npm run art\` first)`);
+  throw new Error(`no art for state '${state}' in theme '${id}' (run \`npm run art\` first)`);
 }
 
 // Check framing: 01 | len LE | payload | crc LE | 02, len = payload + 2,
@@ -40,12 +55,12 @@ function checkFrame(buf, where) {
   if ((sum & 0xffff) !== crc) throw new Error(`${where}: bad checksum`);
 }
 
-async function stateMessages(state, opts) {
+async function stateMessages(state, opts = {}) {
   const { file, custom } = sourceFor(state, opts);
   const { frames, animated } = await loadArt(file);
   if (!custom) {
     // make sure the starter art came through the GIF round trip untouched
-    const allowed = new Set(Object.values(paletteFor(state)));
+    const allowed = new Set(Object.values(themes.THEMES[themeOf(opts && opts.theme)].paletteFor(state)));
     frames.forEach(({ pixels }, i) => pixels.forEach((c) => {
       if (!allowed.has(c)) throw new Error(`${state} frame ${i}: unexpected colour #${c}`);
     }));
@@ -67,7 +82,7 @@ function cBytes(buf) {
 // bridge (bridge/evo-bridge.js), which sends these bytes itself.
 async function buildStates(opts = {}) {
   const states = {};
-  for (const name of Object.keys(STATES)) states[name] = await stateMessages(name, opts);
+  for (const name of themes.STATE_NAMES) states[name] = await stateMessages(name, opts);
   // Pseudo-state: the Evo's built-in clock (full-screen, white).
   states.clock = { msgs: encode.clock('ffffff'), file: '(built-in time channel)' };
   for (const [name, { msgs }] of Object.entries(states)) msgs.forEach((m, i) => checkFrame(m, `${name}[${i}]`));
@@ -101,10 +116,17 @@ async function buildHeader(opts = {}, log = () => {}) {
   return h;
 }
 
-module.exports = { buildHeader, buildStates, stateMessages, sourceFor, checkFrame, CUSTOM_DIR };
+module.exports = { buildHeader, buildStates, stateMessages, sourceFor, customFiles, checkFrame, CUSTOM_DIR };
 
 if (require.main === module) {
-  buildHeader({}, console.log)
+  const i = process.argv.indexOf('--theme');
+  if (i > 0 && !process.argv[i + 1]) {
+    console.error('--theme needs a name, e.g. --theme robot');
+    process.exit(1);
+  }
+  const theme = i > 0 ? process.argv[i + 1] : process.env.EVO_THEME;
+  console.log(`  theme: ${theme || themes.DEFAULT_THEME}`);
+  buildHeader({ theme }, console.log)
     .then((h) => fs.writeFileSync(OUT_HEADER, h))
     .catch((e) => { console.error(e.message || e); process.exit(1); });
 }

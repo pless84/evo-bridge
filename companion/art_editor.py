@@ -1,5 +1,8 @@
 """Pixel editor for the pet's animations (16x16 frames), part of the companion.
 
+Edits one theme at a time (the bridge's current theme when opened); every
+request names it (?theme=), so switching themes meanwhile can't misplace work.
+
 Loads a state's art from the bridge (GET /art/<state>), lets you draw frames,
 tries them on the Evo (POST /art/<state>/try) and saves them as
 tools/art/custom/<state>.gif (POST /art/<state>). "Use starter art" removes
@@ -133,6 +136,9 @@ class ArtEditor(QWidget):
         self.load_seq = 0           # newest load request; older replies are ignored
         self.loading = False
         self.reload_on_open = False # the user discarded changes when closing
+        self.theme = None           # theme of the loaded art
+        self.theme_label = ""
+        self.want_theme = None      # theme to load next (the bridge's current one)
         self._build()
         self._shortcuts()
         self.preview_timer = QTimer(self, singleShot=True, timeout=self._preview_step)
@@ -268,11 +274,22 @@ class ArtEditor(QWidget):
 
     # ---- loading and saving -------------------------------------------------
 
+    def set_theme(self, theme, label=""):
+        """The bridge's theme changed (or is first known). Reload if nothing is unsaved."""
+        if theme == self.want_theme:
+            return
+        self.want_theme, self.theme_label = theme, label or theme
+        if self.state is not None and self.isVisible() and not self.dirty and theme != self.theme:
+            self.load(self.state)
+        elif self.dirty and theme != self.theme:
+            self.say(f"The Evo switched themes; you are still editing {self.theme}. Save or revert to continue there.")
+
     def open_state(self, state=None):
         """Show the window, loading `state` (or the first one)."""
         state = state or self.state or "idle"
         i = self.state_box.findData(state)
-        if self.state is None or self.reload_on_open or (state != self.state and self._confirm_discard()):
+        stale_theme = self.want_theme and self.want_theme != self.theme and not self.dirty
+        if self.state is None or self.reload_on_open or stale_theme or (state != self.state and self._confirm_discard()):
             self.reload_on_open = False
             self.state_box.blockSignals(True)
             self.state_box.setCurrentIndex(i)
@@ -314,6 +331,7 @@ class ArtEditor(QWidget):
             return
         self.load_seq += 1
         seq = self.load_seq
+        theme = self.want_theme
         self._set_loading(True)
 
         def done(code, body):
@@ -329,6 +347,7 @@ class ArtEditor(QWidget):
                 self._show_state_in_box(self.state)  # still editing the previous one
                 return
             self.state, self.custom = state, data["custom"]
+            self.theme = data.get("theme", theme)
             self.frames = data["frames"]
             self.cur = 0
             self.undo_stack.clear()
@@ -338,7 +357,9 @@ class ArtEditor(QWidget):
             self._show_state_in_box(state)
             self._refresh_all()
             self.say("")
-        self.bridge.get(f"/art/{state}", done)
+            if self.want_theme and self.theme != self.want_theme:
+                self.load(state)  # the theme switched while this was loading
+        self.bridge.get(f"/art/{state}" + (f"?theme={theme}" if theme else ""), done)
 
     def _payload(self):
         return json.dumps({"frames": self.frames})
@@ -346,28 +367,33 @@ class ArtEditor(QWidget):
     def save(self):
         if not self.frames or self.loading or self.state is None:
             return
-        state, edits = self.state, self.edits
+        state, edits, theme = self.state, self.edits, self.theme
 
         def done(code, body):
-            if state != self.state:
+            if state != self.state or theme != self.theme:
                 return  # switched animations meanwhile; that one was saved fine
             if code == 200:
                 self.custom = True
                 if edits == self.edits:
                     self.dirty = False  # nothing changed since this was sent
                 self._refresh_title()
+                if not self.dirty and self.want_theme and self.theme != self.want_theme:
+                    saved_in = self.theme
+                    self.load(self.state)  # carry on in the theme the Evo shows now
+                    QTimer.singleShot(400, lambda: self.say(f"Saved to {saved_in}; now editing {self.theme_label}."))
+                    return
                 note = body.strip()
                 self.say(note if note and note != "ok" else
                          "Saved. The Evo uses it from now on." if not self.dirty else
                          "Saved the version from before your latest changes.")
             else:
                 self.say(body.strip() or f"Not saved (HTTP {code}).", error=True)
-        self.bridge.post(f"/art/{self.state}", self._payload(), done)
+        self.bridge.post(f"/art/{self.state}?theme={self.theme}", self._payload(), done)
 
     def try_on_evo(self):
         if not self.frames:
             return
-        self.bridge.post(f"/art/{self.state}/try", self._payload(),
+        self.bridge.post(f"/art/{self.state}/try?theme={self.theme}", self._payload(),
                          lambda code, body: self.say("Showing it on the Evo…" if code == 200
                                                      else body.strip() or f"HTTP {code}", error=code != 200))
 
@@ -379,14 +405,18 @@ class ArtEditor(QWidget):
                 != QMessageBox.StandardButton.Yes:
             return
 
+        removed_from = self.theme
+
         def done(code, body):
             if code == 200:
                 self.dirty = False
                 self.load(self.state)
-                QTimer.singleShot(300, lambda: self.say("Back to the starter art."))
+                msg = ("Back to the starter art." if removed_from == self.want_theme or not self.want_theme
+                       else f"Removed your version from {removed_from}; now editing {self.theme_label}.")
+                QTimer.singleShot(300, lambda: self.say(msg))
             else:
                 self.say(body.strip() or f"HTTP {code}", error=True)
-        self.bridge.delete(f"/art/{self.state}", done)
+        self.bridge.delete(f"/art/{self.state}?theme={self.theme}", done)
 
     def _confirm_discard(self):
         if not self.dirty:
@@ -589,7 +619,8 @@ class ArtEditor(QWidget):
 
     def _refresh_title(self):
         label = STATE_LABELS.get(self.state, self.state or "")
-        self.source.setText(("your art" if self.custom else "starter art") + (" · unsaved changes" if self.dirty else ""))
+        theme = f"{self.theme_label if self.theme == self.want_theme else self.theme} theme · " if self.theme else ""
+        self.source.setText(theme + ("your art" if self.custom else "starter art") + (" · unsaved changes" if self.dirty else ""))
         self.setWindowTitle(f"Evo art editor – {label}{' *' if self.dirty else ''}")
         self.starter_btn.setEnabled(self.custom)
         self.undo_btn.setEnabled(bool(self.undo_stack))

@@ -1,12 +1,14 @@
-// Renders the starter art in art/sprites.js to 16x16 GIFs (art/gif/<state>.gif)
-// and a scaled-up preview sheet (art/preview/sheet.png) for eyeballing.
+// Renders every theme's starter art (art/themes/) to 16x16 GIFs: Blip to
+// art/gif/<state>.gif, the others to art/gif/<theme>/<state>.gif, plus a
+// scaled-up preview sheet per theme in art/preview/. `node render-art.js robot`
+// renders one theme.
 const fs = require('fs');
 const path = require('path');
 const { GifFrame, GifUtil, GifCodec } = require('gifwrap');
 const { PNG } = require('pngjs');
-const { SIZE, STATES, paletteFor } = require('./art/sprites');
+const { SIZE } = require('./art/sprites');
+const themes = require('./art/themes');
 
-const GIF_DIR = path.join(__dirname, 'art', 'gif');
 const PREVIEW_DIR = path.join(__dirname, 'art', 'preview');
 const SCALE = 8;
 
@@ -33,10 +35,10 @@ function frameBuffer(grid, palette) {
   return buf;
 }
 
-async function main() {
-  fs.mkdirSync(GIF_DIR, { recursive: true });
-  fs.mkdirSync(PREVIEW_DIR, { recursive: true });
-
+async function renderTheme(id, theme) {
+  const { STATES, paletteFor } = theme;
+  const gifDir = themes.gifDir(id);
+  fs.mkdirSync(gifDir, { recursive: true });
   const names = Object.keys(STATES);
   const maxFrames = Math.max(...names.map((n) => STATES[n].frames.length));
   const cell = SIZE * SCALE + 4;
@@ -47,7 +49,7 @@ async function main() {
   for (const [row, name] of names.entries()) {
     const palette = paletteFor(name);
     const gifFrames = STATES[name].frames.map(({ grid, ms }, col) => {
-      validate(name, grid, palette);
+      validate(`${id}/${name}`, grid, palette);
       const buf = frameBuffer(grid, palette);
       // preview
       for (let y = 0; y < SIZE * SCALE; y++) {
@@ -59,13 +61,22 @@ async function main() {
       }
       return new GifFrame(SIZE, SIZE, buf, { delayCentisecs: Math.round(ms / 10) });
     });
-    const out = path.join(GIF_DIR, `${name}.gif`);
+    const out = path.join(gifDir, `${name}.gif`);
     await GifUtil.write(out, gifFrames, { loops: 0 }, new GifCodec());
-    console.log(`  ${name.padEnd(13)} ${gifFrames.length} frames -> art/gif/${name}.gif`);
+    console.log(`  ${id}/${name.padEnd(13)} ${gifFrames.length} frames -> ${path.relative(__dirname, out)}`);
   }
 
-  fs.writeFileSync(path.join(PREVIEW_DIR, 'sheet.png'), PNG.sync.write(sheet));
-  console.log(`  preview      -> art/preview/sheet.png (rows: ${names.join(', ')})`);
+  const sheetName = id === themes.DEFAULT_THEME ? 'sheet.png' : `${id}.png`;
+  fs.writeFileSync(path.join(PREVIEW_DIR, sheetName), PNG.sync.write(sheet));
+  console.log(`  preview -> art/preview/${sheetName} (rows: ${names.join(', ')})`);
+}
+
+async function main() {
+  fs.mkdirSync(PREVIEW_DIR, { recursive: true });
+  const only = process.argv[2];
+  for (const [id, theme] of Object.entries(themes.THEMES)) {
+    if (!only || only === id) await renderTheme(id, theme);
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

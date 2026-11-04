@@ -18,8 +18,8 @@ import re
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QProcess, Qt, QTimer, QUrl
-from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QByteArray, QProcess, QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QColor, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QFormLayout,
@@ -72,6 +72,14 @@ def read_token():
         return TOKEN_FILE.read_text().strip()
     except OSError:
         return ""
+
+
+def pixels_pixmap(pixels, size):
+    """A 16x16 frame of 'rrggbb' strings, scaled up crisply."""
+    img = QImage(16, 16, QImage.Format.Format_RGB32)
+    for i, c in enumerate(pixels):
+        img.setPixel(i % 16, i // 16, 0xFF000000 | int(c, 16))
+    return QPixmap.fromImage(img.scaled(size, size))
 
 
 def dot_icon(color, size=64):
@@ -136,6 +144,9 @@ class Window(QMainWindow):
         self.text_color = QColor("#ffffff")
         self.quitting = False
         self.editor = None
+        self.themes = None          # from GET /themes
+        self.themes_loading = False
+        self.pending_theme = None   # chosen, not yet confirmed by the bridge
 
         tabs = QTabWidget()
         tabs.addTab(self._status_tab(), "Status")
@@ -214,6 +225,19 @@ class Window(QMainWindow):
         h.addWidget(self.text, 1)
         h.addWidget(self.color_btn)
         h.addWidget(send)
+        v.addWidget(g)
+
+        g = QGroupBox("Theme")
+        tv = QVBoxLayout(g)
+        self.theme_box = QComboBox()
+        self.theme_box.setIconSize(QSize(32, 32))
+        self.theme_box.setEnabled(False)
+        self.theme_box.activated.connect(self.choose_theme)
+        self.theme_desc = QLabel("…")
+        self.theme_desc.setWordWrap(True)
+        self.theme_desc.setStyleSheet("color: gray")
+        tv.addWidget(self.theme_box)
+        tv.addWidget(self.theme_desc)
         v.addWidget(g)
 
         edit = QPushButton("Edit the animations…")
@@ -362,6 +386,10 @@ class Window(QMainWindow):
                 self.status = None
             if self.status and self.config is None and not self.config_loading:
                 self.load_config()  # the bridge was not up when the app started
+            if self.status and self.themes is None and not self.themes_loading:
+                self.load_themes()
+            if self.status and self.themes and self.pending_theme is None:
+                self._show_theme(self.status.get("theme"))
         else:
             self.status = None
             reason = "wrong token" if code == 401 else (body.strip() or f"HTTP {code}")
@@ -407,6 +435,47 @@ class Window(QMainWindow):
             self.statusBar().showMessage(body.strip() or f"HTTP {code}", 5000)
 
     # ---- display ------------------------------------------------------------
+
+    def load_themes(self):
+        def done(code, body):
+            self.themes_loading = False
+            try:
+                data = json.loads(body) if code == 200 else None
+            except ValueError:
+                data = None
+            if not data:
+                return
+            self.themes = data["themes"]
+            self.theme_box.clear()
+            for t in self.themes:
+                self.theme_box.addItem(QIcon(pixels_pixmap(t["preview"], 32)), t["label"], t["id"])
+            self.theme_box.setEnabled(True)
+            self._show_theme(data["current"])
+        self.themes_loading = True
+        self.bridge.get("/themes", done)
+
+    def _show_theme(self, theme_id):
+        i = self.theme_box.findData(theme_id)
+        if i < 0:
+            return
+        if i != self.theme_box.currentIndex():
+            self.theme_box.setCurrentIndex(i)
+        t = self.themes[i]
+        self.theme_desc.setText(t["description"])
+        if self.editor:
+            self.editor.set_theme(t["id"], t["label"])
+
+    def choose_theme(self, i):
+        theme_id = self.theme_box.itemData(i)
+        self.pending_theme = theme_id  # until the bridge answers, polls must not flip the box back
+
+        def done(code, body):
+            self.pending_theme = None
+            self._report(code, body)
+            current = theme_id if code == 200 else (self.status or {}).get("theme")
+            if current:
+                self._show_theme(current)
+        self.bridge.post("/config", json.dumps({"theme": theme_id}), done)
 
     def save_brightness(self):
         self.bright_timer.stop()
@@ -560,6 +629,10 @@ class Window(QMainWindow):
             self.editor = ArtEditor(self.bridge)
             self.editor.setWindowIcon(self.windowIcon())
             self.editor.resize(860, 560)
+        theme = (self.status or {}).get("theme")
+        if theme:
+            label = next((t["label"] for t in self.themes or [] if t["id"] == theme), theme)
+            self.editor.set_theme(theme, label)
         self.editor.open_state(state)
 
     def set_app_autostart(self, on):

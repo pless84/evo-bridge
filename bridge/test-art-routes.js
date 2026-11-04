@@ -70,15 +70,42 @@ async function main() {
 
   // save, read back, overlapping saves end with the newest, then revert
   assert.strictEqual((await req('POST', '/art/done', { frames: [frame('00ff00', 120), frame('0000ff', 30)] })).code, 200);
-  assert.deepStrictEqual(fs.readdirSync(ART), ['done.gif']);
+  assert.deepStrictEqual(fs.readdirSync(path.join(ART, 'blip')), ['done.gif']);
   const saved = JSON.parse((await req('GET', '/art/done')).body);
   assert.strictEqual(saved.custom, true);
   assert.deepStrictEqual(saved.frames.map((f) => [f.pixels[0], f.ms]), [['00ff00', 120], ['0000ff', 30]]);
   await Promise.all(['111111', '222222', '333333'].map((c) => req('POST', '/art/done', { frames: [frame(c)] })));
   assert(['111111', '222222', '333333'].includes(JSON.parse((await req('GET', '/art/done')).body).frames[0].pixels[0]));
   assert.strictEqual((await req('DELETE', '/art/done')).code, 200);
-  assert.deepStrictEqual(fs.readdirSync(ART), []);
+  assert.deepStrictEqual(fs.readdirSync(path.join(ART, 'blip')), []);
   assert.strictEqual(JSON.parse((await req('GET', '/art/done')).body).custom, false);
+
+  // themes: list, per-theme art, switching
+  const th = JSON.parse((await req('GET', '/themes')).body);
+  assert.strictEqual(th.current, 'blip');
+  assert(th.themes.length >= 7 && th.themes.every((t) => t.preview.length === 256));
+  assert.strictEqual((await req('GET', '/art/done?theme=nope')).code, 404);
+  const robotDone = JSON.parse((await req('GET', '/art/done?theme=robot')).body);
+  assert.strictEqual(robotDone.theme, 'robot');
+  assert.notDeepStrictEqual(robotDone.frames, starter.frames);
+  assert.strictEqual((await req('POST', '/art/idle?theme=robot', { frames: [frame('123456')] })).code, 200);
+  assert(fs.existsSync(path.join(ART, 'robot', 'idle.gif')));
+  assert.strictEqual(JSON.parse((await req('GET', '/art/idle')).body).custom, false, 'blip untouched');
+  assert.strictEqual((await req('POST', '/config', { theme: 'robot' })).code, 200);
+  assert.strictEqual(JSON.parse((await req('GET', '/status')).body).theme, 'robot');
+  assert.strictEqual(JSON.parse((await req('GET', '/art/idle')).body).custom, true, 'current theme is robot now');
+  assert.strictEqual((await req('POST', '/config', { theme: 'nope' })).code, 400);
+  assert.strictEqual((await req('DELETE', '/art/idle?theme=robot')).code, 200);
+  assert(!fs.existsSync(path.join(ART, 'robot', 'idle.gif')));
+
+  // a theme whose art cannot be loaded is refused and not saved
+  fs.mkdirSync(path.join(ART, 'weather'), { recursive: true });
+  fs.writeFileSync(path.join(ART, 'weather', 'idle.png'), 'not a png');
+  const bad = await req('POST', '/config', { theme: 'weather' });
+  assert.strictEqual(bad.code, 500, bad.body);
+  assert.strictEqual(JSON.parse((await req('GET', '/status')).body).theme, 'robot');
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(tmp, 'config.json'), 'utf8')).theme, 'robot');
+  fs.rmSync(path.join(ART, 'weather'), { recursive: true });
 
   // still alive after all that
   assert.strictEqual((await req('GET', '/status')).code, 200);

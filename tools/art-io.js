@@ -1,7 +1,7 @@
 // Reading and writing a state's art as frames, for the companion app's pixel
-// editor (through the laptop bridge). Edited art is saved as
-// art/custom/<state>.gif, where build-states.js already looks first, so the
-// ESP32 firmware picks it up too after `npm run states`.
+// editor (through the laptop bridge). Edited art is saved per theme as
+// art/custom/<theme>/<state>.gif, where build-states.js looks first, so the
+// ESP32 firmware picks it up too after `npm run states -- --theme <theme>`.
 //
 // frames: [{ pixels: 256 RGB hex strings ('rrggbb', row-major), ms }]
 const fs = require('fs');
@@ -9,14 +9,14 @@ const path = require('path');
 const { GifFrame, GifCodec } = require('gifwrap');
 const encode = require('./evo-encode');
 const { loadArt, SIZE } = require('./load-art');
-const { sourceFor, CUSTOM_DIR } = require('./build-states');
-const { STATES } = require('./art/sprites');
+const { sourceFor, customFiles, CUSTOM_DIR } = require('./build-states');
+const themes = require('./art/themes');
 
 const MAX_FRAMES = 64;
 const MAX_MESSAGES = 255; // the firmware's limit per state (states.h)
 const HEX = /^[0-9a-f]{6}$/;
 
-const EDITABLE = Object.keys(STATES); // every state except the built-in clock
+const EDITABLE = themes.STATE_NAMES; // every state except the built-in clock
 const isEditable = (state) => EDITABLE.includes(state);
 
 // Problems with a frames list; empty = fine.
@@ -40,11 +40,11 @@ function problems(frames) {
   return out;
 }
 
-// { state, custom, frames }
-async function readArt(state) {
-  const { file, custom } = sourceFor(state);
+// { state, theme, custom, frames }
+async function readArt(state, theme = themes.DEFAULT_THEME) {
+  const { file, custom } = sourceFor(state, { theme });
   const { frames } = await loadArt(file);
-  return { state, custom, frames: frames.map(({ pixels, ms }) => ({ pixels, ms: Math.round(ms / 10) * 10 })) };
+  return { state, theme, custom, frames: frames.map(({ pixels, ms }) => ({ pixels, ms: Math.round(ms / 10) * 10 })) };
 }
 
 async function gifBuffer(frames) {
@@ -63,21 +63,21 @@ async function gifBuffer(frames) {
   return gif.buffer;
 }
 
-// Save as art/custom/<state>.gif (atomically). Frames must be valid.
-async function writeArt(state, frames) {
-  fs.mkdirSync(CUSTOM_DIR, { recursive: true });
-  const file = path.join(CUSTOM_DIR, `${state}.gif`);
+// Save as art/custom/<theme>/<state>.gif (atomically). Frames must be valid.
+async function writeArt(state, frames, theme = themes.DEFAULT_THEME) {
+  const [file, ...others] = customFiles(state, theme);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, await gifBuffer(frames));
   fs.renameSync(tmp, file);
-  // A PNG of the same name would win over nothing, but keep one source per state.
-  fs.rmSync(path.join(CUSTOM_DIR, `${state}.png`), { force: true });
+  // Keep one source per state.
+  for (const f of others) fs.rmSync(f, { force: true });
   return file;
 }
 
-// Back to the starter art.
-function removeArt(state) {
-  for (const ext of ['gif', 'png']) fs.rmSync(path.join(CUSTOM_DIR, `${state}.${ext}`), { force: true });
+// Back to the theme's starter art.
+function removeArt(state, theme = themes.DEFAULT_THEME) {
+  for (const f of customFiles(state, theme)) fs.rmSync(f, { force: true });
 }
 
 module.exports = { EDITABLE, isEditable, problems, readArt, writeArt, removeArt, gifBuffer, MAX_FRAMES, CUSTOM_DIR };

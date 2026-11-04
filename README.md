@@ -26,6 +26,22 @@ There are two ways to run the bridge, with the same HTTP API and the same art:
 
 With several Claude Code sessions, the display shows the most urgent one (needs_input > error > working > thinking > done > idle). It only goes idle once every session has finished.
 
+## Themes
+
+Seven art sets, all with the same states. Pick one on the companion app's Display tab, or set `"theme"` in `config.json`; the laptop bridge switches at once.
+
+| Theme | Idea |
+|---|---|
+| `blip` (default) | The original pet: a round blob whose colour shows the state. |
+| `robot` | A robot head: the antenna light shows the state, the screen shows the work. |
+| `ring` | A coloured ring with one symbol: the easiest to read from across the room. |
+| `critter` | A small loaf creature: naps when idle, types while working, stares when it needs you. |
+| `sprout` | A potted plant: sways when idle, grows while working, droops when it needs you, blooms when done. |
+| `weather` | A little sky: stars when idle, rain while working, a rainbow when it needs you, sun when done. |
+| `terminal` | Plain text: a blinking cursor, a progress bar, `?`, `OK` and `ERR`. |
+
+Preview sheets (one row per state) are in `tools/art/preview/` (`sheet.png` is Blip). The themes are code in `tools/art/themes/`; after changing one, run `npm run art` in `tools/` to re-render the GIFs.
+
 ## Layout
 
 ```
@@ -61,7 +77,7 @@ Settings live in `~/.config/evo-bridge/config.json`: which Evo, brightness, and 
 A small tray app for the laptop bridge (Qt, so it looks native on KDE):
 
 - **Status:** what the Evo shows, whether it's connected, and each Claude Code session. The tray icon takes the pet's colour.
-- **Display:** brightness, send scrolling text, preview each animation, and open the art editor.
+- **Display:** brightness, the [theme](#themes), scrolling text, preview each animation, and open the art editor.
 - **Settings:** pick the Evo from your paired devices, and change the timings.
 - **Service:** start, stop or restart the bridge, start it at login, and read its log.
 
@@ -79,7 +95,7 @@ companion/install.sh               # adds "Evo companion" to the app menu
 - Onion skin (shows the previous frame faintly), a live preview, and undo/redo (Ctrl+Z / Ctrl+Shift+Z).
 - **Try on Evo** shows your version for a few seconds without saving. **Save** writes `tools/art/custom/<state>.gif`, and the laptop bridge uses it right away. **Use starter art** deletes your version.
 
-Saved art is an ordinary 16×16 GIF in the folder described in [Changing the art](#changing-the-art), so the ESP32 can use it too: run `npm run states` in `tools/` and reflash.
+The editor works on the current theme, and saved art is an ordinary 16×16 GIF in `tools/art/custom/<theme>/`, so the ESP32 can use it too: run `npm run states -- --theme <theme>` in `tools/` and reflash.
 
 Or run `companion/evo-companion.py` directly. Closing the window keeps it in the tray; quit from the tray menu. The Service tab can also open it in the tray at login. `companion/install.sh --remove` takes the menu entry away.
 
@@ -217,19 +233,21 @@ Together, these mean a web page you visit can't drive the display, and other dev
 | `GET /status` | JSON: transport, connected, displayed state, active text, Wi-Fi network, sessions. |
 | `GET /config`, `POST /config` | Laptop bridge only: read or change the settings (JSON, see `bridge/config.js`). |
 | `GET /preview/<state>` | Laptop bridge only: show that state's animation for 5 seconds. |
-| `GET /art`, `GET /art/<state>` | Laptop bridge only: which states have custom art; a state's frames as JSON. |
+| `GET /themes` | Laptop bridge only: the themes with a preview each; switch with `POST /config {"theme": "robot"}`. |
+| `GET /art`, `GET /art/<state>` | Laptop bridge only (all `/art` routes take `?theme=`, default the current one): which states have custom art; a state's frames as JSON. |
 | `POST /art/<state>` | Laptop bridge only: save frames (`{"frames":[{"pixels":[256 × "rrggbb"],"ms":100}]}`) as `tools/art/custom/<state>.gif`. |
 | `POST /art/<state>/try`, `DELETE /art/<state>` | Laptop bridge only: show frames without saving; go back to the starter art. |
 | `POST /wifi/reset` | ESP32 only: reboot into the Wi-Fi setup hotspot (the saved network is kept). |
 
 ## Changing the art
 
-Starter art is defined in code in `tools/art/sprites.js`. To use your own, drop a GIF (animated) or PNG into `tools/art/custom/<state>.gif` (or `.png`). 16×16 is ideal. Larger art is scaled down with nearest neighbor, and transparent pixels show as off. Any state name from the table above works except `clock`, which is the Evo's built-in clock. Then:
+Starter art is defined in code: Blip in `tools/art/sprites.js`, the other themes in `tools/art/themes/`. To use your own, drop a GIF (animated) or PNG into `tools/art/custom/<theme>/<state>.gif` (or `.png`); for Blip, `tools/art/custom/<state>.gif` works too. The art editor saves there for you. 16×16 is ideal. Larger art is scaled down with nearest neighbor, and transparent pixels show as off. Any state name from the table above works except `clock`, which is the Evo's built-in clock. Then:
 
 ```bash
 cd tools
 npm install
-npm run build      # renders art/gif/*.gif + art/preview/sheet.png, then writes firmware/include/states.h
+npm run build      # renders every theme's GIFs and preview sheets, then writes firmware/include/states.h (Blip)
+npm run states -- --theme robot   # states.h from another theme
 ```
 
 Reflash afterwards. The firmware only replays the bytes generated here; all image encoding happens on the PC in `tools/evo-encode.js`. That's a small, dependency-free port of [node-divoom-timebox-evo](https://github.com/RomRider/node-divoom-timebox-evo), and `npm test` checks it byte for byte against output frozen from that library.

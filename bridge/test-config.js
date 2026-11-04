@@ -30,7 +30,10 @@ bad({ timing: { doneHoldMs: 86400001 } }, /doneHoldMs/);
 bad({ timing: { madeUp: 1 } }, /unknown timing/);
 bad({ timing: { sessionTimeoutMs: 0 } }, /sessionTimeoutMs/);   // would drop every session
 ok({ timing: { sessionTimeoutMs: 60000, staleBusyMs: 0, idleToClockMs: 0 } });
-bad({ constructor: 1 }, /unknown setting/);                     // prototype keys are not settings
+bad({ constructor: 1 }, /unknown setting/);
+ok({ theme: 'robot' });
+bad({ theme: 'nope' }, /theme/);
+bad({ theme: 'constructor' }, /theme/);                     // prototype keys are not settings
 bad({ timing: { toString: 5 } }, /unknown timing/);
 
 // merge keeps what isn't mentioned and does not touch the defaults

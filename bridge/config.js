@@ -4,6 +4,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const themes = require('../tools/art/themes');
 
 const DIR = path.join(os.homedir(), '.config', 'evo-bridge');
 const FILE = process.env.EVO_CONFIG || path.join(DIR, 'config.json');
@@ -12,6 +13,7 @@ const FILE = process.env.EVO_CONFIG || path.join(DIR, 'config.json');
 const DEFAULTS = {
   mac: '',          // '' = the paired device named TimeBox*
   brightness: null, // null = leave the Evo's own setting alone
+  theme: themes.DEFAULT_THEME, // which art set (tools/art/themes)
   timing: {
     minDisplayMs: 800,
     workingDebounceMs: 1500,
@@ -42,6 +44,9 @@ function problems(c) {
       && !(Number.isInteger(c.brightness) && c.brightness >= 0 && c.brightness <= 100)) {
     out.push('brightness must be 0-100 or null');
   }
+  if (has(c, 'theme') && !themes.isTheme(c.theme)) {
+    out.push(`theme must be one of: ${Object.keys(themes.THEMES).join(', ')}`);
+  }
   if (has(c, 'timing')) {
     if (c.timing === null || typeof c.timing !== 'object' || Array.isArray(c.timing)) {
       out.push('timing must be an object');
@@ -61,6 +66,7 @@ function merge(base, c) {
   return {
     mac: has(c, 'mac') ? c.mac : base.mac,
     brightness: has(c, 'brightness') ? c.brightness : base.brightness,
+    theme: has(c, 'theme') ? c.theme : base.theme,
     timing: { ...base.timing, ...(c.timing || {}) },
   };
 }

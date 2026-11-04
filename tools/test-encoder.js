@@ -111,14 +111,36 @@ test('larger PNGs are scaled down with nearest neighbour', async () => {
 test('editor art round-trips through GIF unchanged', async () => {
   const artIo = require('./art-io');
   fs.mkdirSync(TMP, { recursive: true });
-  for (const state of artIo.EDITABLE) {
-    const { frames, custom } = await artIo.readArt(state);
-    assert.deepStrictEqual(artIo.problems(frames), [], state);
-    const file = path.join(TMP, `${state}.gif`);
-    fs.writeFileSync(file, await artIo.gifBuffer(frames));
-    const back = (await loadArt(file)).frames;
-    assert.deepStrictEqual(back, frames, `${state} (${custom ? 'custom' : 'starter'})`);
+  for (const theme of Object.keys(require('./art/themes').THEMES)) {
+    for (const state of artIo.EDITABLE) {
+      const { frames, custom } = await artIo.readArt(state, theme);
+      assert.deepStrictEqual(artIo.problems(frames), [], `${theme}/${state}`);
+      const file = path.join(TMP, `${theme}-${state}.gif`);
+      fs.writeFileSync(file, await artIo.gifBuffer(frames));
+      const back = (await loadArt(file)).frames;
+      assert.deepStrictEqual(back, frames, `${theme}/${state} (${custom ? 'custom' : 'starter'})`);
+    }
   }
+});
+
+test('every theme builds, matches its sprites, and fits the firmware', async () => {
+  const themes = require('./art/themes');
+  const { buildStates } = require('./build-states');
+  for (const theme of Object.keys(themes.THEMES)) {
+    const states = await buildStates({ theme, starterOnly: true });  // checks colours and framing
+    for (const [name, { msgs }] of Object.entries(states)) {
+      assert.ok(msgs.length >= 1 && msgs.length <= 255, `${theme}/${name}: ${msgs.length} messages`);
+    }
+    // the rendered GIFs are current: same frames as the sprite code
+    for (const name of themes.STATE_NAMES) {
+      const t = themes.THEMES[theme];
+      const pal = t.paletteFor(name);
+      const want = t.STATES[name].frames.map((f) => f.grid.flat().map((c) => pal[c]));
+      const got = (await loadArt(path.join(themes.gifDir(theme), `${name}.gif`))).frames.map((f) => f.pixels);
+      assert.deepStrictEqual(got, want, `${theme}/${name}: run \`npm run art\``);
+    }
+  }
+  assert.throws(() => require('./build-states').sourceFor('idle', { theme: 'nope' }), /unknown theme/);
 });
 
 test('editor art is validated', () => {

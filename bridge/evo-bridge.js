@@ -10,7 +10,8 @@
 //   GET  /config               settings, defaults and the file they live in
 //   POST /config               JSON with the settings to change (see config.js)
 //   GET  /preview/<state>      show a state's animation for a few seconds
-//   GET  /art                  which states have your own art
+//   GET  /themes               the art themes (set one with POST /config {"theme": ...})
+//   GET  /art                  which states have your own art (?theme=, default: current)
 //   GET  /art/<state>          a state's frames: { frames: [{ pixels: [256 'rrggbb'], ms }] }
 //   POST /art/<state>          save frames as tools/art/custom/<state>.gif and use them
 //   POST /art/<state>/try      show frames on the Evo without saving
@@ -39,6 +40,7 @@ const { spawn, execFile } = require('child_process');
 const encode = require('../tools/evo-encode');
 const { buildStates, stateMessages: buildStateMessages, sourceFor } = require('../tools/build-states');
 const artIo = require('../tools/art-io');
+const themes = require('../tools/art/themes');
 const { StateMachine, NAMES, isWorking } = require('./state-machine');
 const config = require('./config');
 const MSG_INTERVAL_MS = 60;
@@ -301,6 +303,7 @@ function handleStatus(res) {
     queued: sender.queue.length,
     sent: sender.sent,
     brightness,
+    theme: cfg.theme,
     uptime_s: Math.floor(process.uptime()),
     sessions,
   }) + '\n', 'application/json');
@@ -335,16 +338,58 @@ function serialized(state, fn) {
 
 // Rebuild a state's messages after its file changed. The change is already
 // on disk, so a failure here is reported but not undone.
-async function reloadState(state) {
-  STATES[state] = { msgs: (await buildStateMessages(state)).msgs };
+let activeTheme = null; // the theme STATES holds
+
+async function reloadState(state, theme) {
+  await themeLoad; // a theme switch in progress read the files before this save
+  if (theme !== activeTheme) return; // edited another theme; nothing on screen changes
+  const { msgs } = await buildStateMessages(state, { theme });
+  if (theme !== activeTheme) return; // switched while loading
+  STATES[state] = { msgs };
   if (!overlay) showCurrent(); // the displayed state may be the one that changed
+}
+
+// Load every state of a theme and show it. Loads run one after another; a
+// load that a newer one overtook is dropped. Resolves to null on success
+// (or when overtaken), or to the Error.
+let themeLoad = Promise.resolve(null);
+let themeGen = 0;
+function loadTheme(theme) {
+  const gen = ++themeGen;
+  themeLoad = themeLoad.then(async () => {
+    try {
+      const built = await buildStates({ theme });
+      if (gen !== themeGen) return null;
+      STATES = Object.fromEntries(Object.entries(built).map(([k, v]) => [k, { msgs: v.msgs }]));
+      activeTheme = theme;
+      log(`[art] theme: ${theme}`);
+      if (!overlay) showCurrent();
+      return null;
+    } catch (e) {
+      log(`[art] could not load theme ${theme}: ${e.message}`);
+      return e;
+    }
+  });
+  return themeLoad;
+}
+
+// The theme list for the companion, with a small preview (first idle frame).
+function themesJson() {
+  const list = Object.entries(themes.THEMES).map(([id, t]) => {
+    const pal = t.paletteFor('idle');
+    const preview = t.STATES.idle.frames[0].grid.flat().map((c) => pal[c]);
+    return { id, label: t.label, description: t.description, preview };
+  });
+  return JSON.stringify({ current: cfg.theme, themes: list }) + '\n';
 }
 
 async function handleArt(req, url, res) {
   const parts = url.pathname.split('/').filter(Boolean); // ['art', state?, 'try'?]
+  const theme = url.searchParams.get('theme') || cfg.theme;
+  if (!themes.isTheme(theme)) return send(res, 404, `unknown theme: ${theme}\n`);
   if (parts.length === 1 && req.method === 'GET') {
-    const states = artIo.EDITABLE.map((state) => ({ state, custom: sourceFor(state).custom }));
-    return send(res, 200, JSON.stringify({ states, dir: artIo.CUSTOM_DIR }) + '\n', 'application/json');
+    const states = artIo.EDITABLE.map((state) => ({ state, custom: sourceFor(state, { theme }).custom }));
+    return send(res, 200, JSON.stringify({ theme, states, dir: artIo.CUSTOM_DIR }) + '\n', 'application/json');
   }
   const state = parts[1];
   if (!artIo.isEditable(state) || parts.length > 3 || (parts.length === 3 && parts[2] !== 'try')) {
@@ -361,11 +406,11 @@ async function handleArt(req, url, res) {
     }
     if (parts.length !== 2) return send(res, 405, 'method not allowed\n');
     if (req.method === 'GET') {
-      return send(res, 200, JSON.stringify(await artIo.readArt(state)) + '\n', 'application/json');
+      return send(res, 200, JSON.stringify(await artIo.readArt(state, theme)) + '\n', 'application/json');
     }
     const reloaded = async (what) => {
       try {
-        await reloadState(state);
+        await reloadState(state, theme);
         return 'ok\n';
       } catch (e) {
         log(`[art] ${state}: ${what}, but loading it failed: ${e.message}`);
@@ -374,17 +419,17 @@ async function handleArt(req, url, res) {
     };
     if (req.method === 'POST') {
       const frames = await readFrames(req);
-      const reply = await serialized(state, async () => {
-        const file = await artIo.writeArt(state, frames);
-        log(`[art] ${state}: saved ${frames.length} frame(s) to ${file}`);
+      const reply = await serialized(`${theme}/${state}`, async () => {
+        const file = await artIo.writeArt(state, frames, theme);
+        log(`[art] ${theme}/${state}: saved ${frames.length} frame(s) to ${file}`);
         return reloaded('Saved');
       });
       return send(res, 200, reply);
     }
     if (req.method === 'DELETE') {
-      const reply = await serialized(state, async () => {
-        artIo.removeArt(state);
-        log(`[art] ${state}: back to the starter art`);
+      const reply = await serialized(`${theme}/${state}`, async () => {
+        artIo.removeArt(state, theme);
+        log(`[art] ${theme}/${state}: back to the starter art`);
         return reloaded('Removed');
       });
       return send(res, 200, reply);
@@ -413,9 +458,15 @@ async function handleConfig(req, res) {
   if (p.length) return send(res, 400, p.join('\n') + '\n');
   const before = cfg;
   const next = config.merge(cfg, change);
+  // A new theme must load before it becomes the setting.
+  if (next.theme !== before.theme) {
+    const err = await loadTheme(next.theme);
+    if (err) return send(res, 500, `could not load theme ${next.theme}: ${err.message}\n`);
+  }
   try {
     config.save(next);
   } catch (e) {
+    if (next.theme !== before.theme) loadTheme(before.theme); // keep showing what the setting says
     return send(res, 500, `could not save ${config.FILE}: ${e.message}\n`);
   }
   cfg = next;
@@ -459,6 +510,7 @@ const server = http.createServer((req, res) => {
   if (p.startsWith('/state/')) return handleState(p.slice(7), url, res);
   if (p.startsWith('/brightness/')) return handleBrightness(p.slice(12), res);
   if (p.startsWith('/preview/')) return handlePreview(p.slice(9), res);
+  if (p === '/themes' && req.method === 'GET') return send(res, 200, themesJson(), 'application/json');
   if (p === '/art' || p.startsWith('/art/')) return handleArt(req, url, res).catch(() => send(res, 500, 'error\n'));
   if (p === '/config' && req.method === 'GET') return send(res, 200, configJson(), 'application/json');
   if (p === '/config' && req.method === 'POST') return handleConfig(req, res).catch(() => send(res, 500, 'error\n'));
@@ -476,7 +528,12 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 (async () => {
-  STATES = Object.fromEntries(Object.entries(await buildStates()).map(([k, v]) => [k, { msgs: v.msgs }]));
+  if (await loadTheme(cfg.theme)) {
+    if (cfg.theme === themes.DEFAULT_THEME) throw new Error('could not load the starter art (run `npm run art` in tools/)');
+    log(`[art] using ${themes.DEFAULT_THEME} instead; pick another theme in the companion app`);
+    cfg = { ...cfg, theme: themes.DEFAULT_THEME };
+    if (await loadTheme(cfg.theme)) throw new Error('could not load the starter art (run `npm run art` in tools/)');
+  }
   server.on('error', (e) => {
     console.error(`HTTP: ${e.message}`);
     process.exit(1);
