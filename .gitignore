@@ -8,3 +8,5 @@ tools/art/preview/
 tools/test/.tmp/
 *.pcapng
 *.btsnoop
+__pycache__/
+*.pyc
