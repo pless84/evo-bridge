@@ -8,6 +8,9 @@ takes the pet's colour for the current state.
 
     evo-companion.py [--hidden]     --hidden: start in the tray only
 
+"Start minimized in the tray" (Service tab) makes every launch behave like
+--hidden; it is kept in ~/.config/evo-bridge/companion.conf.
+
 Talks to the bridge at EVO_URL (default http://127.0.0.1:8787) with the token
 from EVO_TOKEN or ~/.config/evo-bridge/token, like the hook. Needs PySide6
 (Fedora: python3-pyside6).
@@ -18,7 +21,7 @@ import re
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QProcess, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QByteArray, QProcess, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QColor, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
@@ -337,6 +340,12 @@ class Window(QMainWindow):
         self.app_autostart.setChecked(AUTOSTART.exists())
         self.app_autostart.toggled.connect(self.set_app_autostart)
         v.addWidget(self.app_autostart)
+        self.start_minimized = QCheckBox("Start minimized in the tray")
+        self.start_minimized.setToolTip("Open only the tray icon when the app starts; click it to show this window.")
+        self.start_minimized.setChecked(prefs().value("start_minimized", False, type=bool))
+        self.start_minimized.toggled.connect(lambda on: prefs().setValue("start_minimized", on))
+        self.start_minimized.setEnabled(QSystemTrayIcon.isSystemTrayAvailable())
+        v.addWidget(self.start_minimized)
         row = QHBoxLayout()
         row.addWidget(QLabel("Log"), 1)
         b = QPushButton("Refresh log")
@@ -676,6 +685,11 @@ class Window(QMainWindow):
         QApplication.quit()
 
 
+def prefs():
+    # The app's own preferences (not the bridge's): ~/.config/evo-bridge/companion.conf
+    return QSettings("evo-bridge", "companion")
+
+
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Evo companion")
@@ -684,7 +698,8 @@ def main():
     app.setQuitOnLastWindowClosed(w.tray is None)  # with a tray, closing only hides
     svg = HERE / "evo-companion.svg"
     app.setWindowIcon(QIcon(str(svg)) if svg.exists() else dot_icon(COLORS["idle"]))
-    if "--hidden" not in sys.argv or not w.tray:
+    hidden = "--hidden" in sys.argv or prefs().value("start_minimized", False, type=bool)
+    if not hidden or not w.tray:
         w.show()
     sys.exit(app.exec())
 

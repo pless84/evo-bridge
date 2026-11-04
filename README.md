@@ -97,7 +97,7 @@ companion/install.sh               # adds "Evo companion" to the app menu
 
 The editor works on the current theme, and saved art is an ordinary 16×16 GIF in `tools/art/custom/<theme>/`, so the ESP32 can use it too: run `npm run states -- --theme <theme>` in `tools/` and reflash.
 
-Or run `companion/evo-companion.py` directly. Closing the window keeps it in the tray; quit from the tray menu. The Service tab can also open it in the tray at login. `companion/install.sh --remove` takes the menu entry away.
+Or run `companion/evo-companion.py` directly. Closing the window keeps it in the tray; quit from the tray menu. The Service tab can also open it in the tray at login, or make it always start minimized in the tray. `companion/install.sh --remove` takes the menu entry away.
 
 ## 1. Find the Evo's Bluetooth MAC
 
