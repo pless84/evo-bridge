@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Evo companion: a small settings and status app for the laptop bridge.
+"""Evo companion: a small settings and status app for the computer bridge.
 
 Shows what the Evo is displaying, sets brightness, sends text, previews the
 animations, edits the bridge's settings (Evo device, timings) and controls
@@ -217,7 +217,7 @@ class Window(QMainWindow):
 
         g = QGroupBox("Scrolling text")
         h = QHBoxLayout(g)
-        self.text = QLineEdit(placeholderText="Hello from the laptop", maxLength=200)
+        self.text = QLineEdit(placeholderText="Hello from the computer", maxLength=200)
         self.text.returnPressed.connect(self.send_text)
         self.color_btn = QPushButton()
         self.color_btn.setToolTip("Text colour")

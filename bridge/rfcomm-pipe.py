@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Bluetooth serial (RFCOMM) pipe for the laptop bridge: bytes on stdin go to
+# Bluetooth serial (RFCOMM) pipe for the computer bridge: bytes on stdin go to
 # the Evo; replies from the Evo are read and dropped. Exits when the link
 # drops, so evo-bridge.js can reconnect.
 #

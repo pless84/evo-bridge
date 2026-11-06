@@ -1,4 +1,4 @@
-# systemd user service for the laptop bridge. Install:
+# systemd user service for the computer bridge. Install:
 #   mkdir -p ~/.config/systemd/user
 #   sed "s|@REPO@|$PWD|" bridge/evo-bridge.service > ~/.config/systemd/user/evo-bridge.service
 #   systemctl --user daemon-reload && systemctl --user enable --now evo-bridge

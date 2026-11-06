@@ -1,4 +1,4 @@
-// Settings for the laptop bridge, kept in ~/.config/evo-bridge/config.json
+// Settings for the computer bridge, kept in ~/.config/evo-bridge/config.json
 // (EVO_CONFIG overrides the path). The companion app edits them through
 // POST /config; every field is optional and falls back to the default.
 const fs = require('fs');

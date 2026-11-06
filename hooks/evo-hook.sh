@@ -4,7 +4,7 @@
 # the HTTP call runs in the background and every error is swallowed.
 #
 # Environment:
-#   EVO_URL        bridge address (default http://127.0.0.1:8787, the laptop
+#   EVO_URL        bridge address (default http://127.0.0.1:8787, the computer
 #                  bridge; http://evo.local or the board's IP for the ESP32)
 #   EVO_TOKEN      shared secret (BRIDGE_TOKEN in the firmware's secrets.h), or
 #   EVO_TOKEN_FILE file holding it (default ~/.config/evo-bridge/token)

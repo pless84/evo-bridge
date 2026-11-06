@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Laptop bridge: the same HTTP API as the ESP32 firmware, but this computer's
+// Computer bridge: the same HTTP API as the ESP32 firmware, but this computer's
 // own Bluetooth talks to the Evo. No extra board needed.
 //
 //   GET  /state/<name>?session_id=<id>&t=<ms>
@@ -293,7 +293,7 @@ function handleStatus(res) {
   const sessions = [...machine.sessions.values()].filter((s) => !s.ended)
     .map((s) => ({ id: s.id, state: s.state, idle_s: Math.floor((t - s.lastSeen) / 1000) }));
   send(res, 200, JSON.stringify({
-    transport: 'laptop-bluetooth',
+    transport: 'computer-bluetooth',
     evo: MAC || null,
     connected,
     state: machine.displayed,
@@ -491,7 +491,7 @@ function relink() {
   else reconnectTimer = setTimeout(connect, 500); // a lookup is running; go again after it
 }
 
-const ROOT = 'Evo bridge (laptop)\n'
+const ROOT = 'Evo bridge (computer)\n'
   + '  GET  /state/<idle|thinking|working|working_bash|working_edit|working_read|needs_input|done|error|end>?session_id=ID\n'
   + '  POST /text   (body = text, ?color=RRGGBB)\n'
   + '  GET  /brightness/<0-100>\n'

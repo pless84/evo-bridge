@@ -78,7 +78,7 @@ function cBytes(buf) {
 }
 
 // Returns the text of states.h. starterOnly ignores art/custom (used by tests).
-// Every state's messages: { name: { msgs, file } }. Also used by the laptop
+// Every state's messages: { name: { msgs, file } }. Also used by the computer
 // bridge (bridge/evo-bridge.js), which sends these bytes itself.
 async function buildStates(opts = {}) {
   const states = {};

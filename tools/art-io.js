@@ -1,5 +1,5 @@
 // Reading and writing a state's art as frames, for the companion app's pixel
-// editor (through the laptop bridge). Edited art is saved per theme as
+// editor (through the computer bridge). Edited art is saved per theme as
 // art/custom/<theme>/<state>.gif, where build-states.js looks first, so the
 // ESP32 firmware picks it up too after `npm run states -- --theme <theme>`.
 //

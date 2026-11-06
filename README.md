@@ -3,12 +3,12 @@
 Turns a Divoom Timebox Evo (16×16 LED speaker) into a status light for Claude Code. A small pet on the display shows whether Claude is thinking, working, waiting for you, done, or hit an error.
 
 ```
-Claude Code hooks ──curl──▶ laptop bridge (http://127.0.0.1:8787) ──laptop Bluetooth──▶ Timebox Evo
+Claude Code hooks ──curl──▶ computer bridge (http://127.0.0.1:8787) ──Bluetooth──▶ Timebox Evo
 ```
 
 There are two ways to run the bridge, with the same HTTP API and the same art:
 
-- **Laptop bridge** (current setup, no extra hardware): a small Node program on the computer running Claude Code talks to the Evo over the laptop's own Bluetooth. See [Laptop bridge](#laptop-bridge).
+- **Computer bridge** (current setup, no extra hardware): a small Node program on the computer running Claude Code talks to the Evo over its own Bluetooth. See [Computer bridge](#computer-bridge).
 - **ESP32 bridge:** a board on Wi-Fi (`http://evo.local`) holds the Bluetooth link, so the Evo works for any computer on the network. See steps 1–2 below, and set `EVO_URL=http://evo.local` for the hook.
 
 | State | Looks like | Sent when |
@@ -28,7 +28,7 @@ With several Claude Code sessions, the display shows the most urgent one (needs_
 
 ## Themes
 
-Seven art sets, all with the same states. Pick one on the companion app's Display tab, or set `"theme"` in `config.json`; the laptop bridge switches at once.
+Seven art sets, all with the same states. Pick one on the companion app's Display tab, or set `"theme"` in `config.json`; the computer bridge switches at once.
 
 | Theme | Idea |
 |---|---|
@@ -50,23 +50,23 @@ firmware/   PlatformIO project for the ESP32 bridge
   include/config.h        timings, rate limit, transport, escaping flag
   include/secrets.h       your Wi-Fi + Evo MAC (gitignored; copy the .example)
   test/host/run.sh        PC-side tests for the encoder and state machine
-bridge/     laptop bridge: HTTP server + Bluetooth link, no ESP32 needed
-companion/  tray app for the laptop bridge: status, brightness, settings, service
+bridge/     computer bridge: HTTP server + Bluetooth link, no ESP32 needed
+companion/  tray app for the computer bridge: status, brightness, settings, service
 hooks/      evo-hook.sh + settings snippet for ~/.claude/settings.json
 tools/      pixel art + the script that turns it into states.h
 ```
 
-## Laptop bridge
+## Computer bridge
 
 Needs Node 18+ and a Python with Bluetooth sockets. Fedora's `/usr/bin/python3` has them; Homebrew's Python doesn't, so the bridge uses `/usr/bin/python3` unless `EVO_PYTHON` says otherwise.
 
-1. Pair the Evo with the laptop in Bluetooth settings (PIN `0000` if asked). Unplug the ESP32 bridge if it is running: the Evo takes only one data connection.
+1. Pair the Evo with the computer in Bluetooth settings (PIN `0000` if asked). Unplug the ESP32 bridge if it is running: the Evo takes only one data connection.
 2. Install the art tools once: `(cd tools && npm install)`.
 3. Put a random token in `~/.config/evo-bridge/token` (for example `openssl rand -hex 16`). The hook reads the same file.
 4. Run it: `node bridge/evo-bridge.js`. It finds the paired device named `TimeBox…` (or set `EVO_MAC`), listens on `127.0.0.1:8787` (`EVO_PORT`), and reconnects by itself if the Evo goes away.
 5. To start it automatically at login, install the systemd user service; see the comments in `bridge/evo-bridge.service`.
 
-The laptop bridge reads the art straight from `tools/art`, so after `npm run build` just restart it; there's nothing to flash. It accepts requests only from this computer, with the same token, `Host` and `Origin` checks as the ESP32. Its state machine (`bridge/state-machine.js`) is a port of the firmware's; `node bridge/test-state-machine.js` runs the same tests against it.
+The computer bridge reads the art straight from `tools/art`, so after `npm run build` just restart it; there's nothing to flash. It accepts requests only from this computer, with the same token, `Host` and `Origin` checks as the ESP32. Its state machine (`bridge/state-machine.js`) is a port of the firmware's; `node bridge/test-state-machine.js` runs the same tests against it.
 
 `bridge/rfcomm-pipe.py` holds the Bluetooth connection: bytes from the bridge go to the Evo, and it exits when the link drops so the bridge can reconnect.
 
@@ -74,7 +74,7 @@ Settings live in `~/.config/evo-bridge/config.json`: which Evo, brightness, and 
 
 ### Companion app
 
-A small tray app for the laptop bridge (Qt, so it looks native on KDE):
+A small tray app for the computer bridge (Qt, so it looks native on KDE):
 
 - **Status:** what the Evo shows, whether it's connected, and each Claude Code session. The tray icon takes the pet's colour.
 - **Display:** brightness, the [theme](#themes), scrolling text, preview each animation, and open the art editor.
@@ -93,7 +93,7 @@ companion/install.sh               # adds "Evo companion" to the app menu
 - Pencil, fill and colour picker. Left-click paints with the chosen colour; right-click paints black, which means the LEDs are off.
 - A frame list: add, duplicate, delete, clear and reorder frames, and set how long each one shows (in 10 ms steps).
 - Onion skin (shows the previous frame faintly), a live preview, and undo/redo (Ctrl+Z / Ctrl+Shift+Z).
-- **Try on Evo** shows your version for a few seconds without saving. **Save** writes `tools/art/custom/<state>.gif`, and the laptop bridge uses it right away. **Use starter art** deletes your version.
+- **Try on Evo** shows your version for a few seconds without saving. **Save** writes `tools/art/custom/<state>.gif`, and the computer bridge uses it right away. **Use starter art** deletes your version.
 
 The editor works on the current theme, and saved art is an ordinary 16×16 GIF in `tools/art/custom/<theme>/`, so the ESP32 can use it too: run `npm run states -- --theme <theme>` in `tools/` and reflash.
 
@@ -193,7 +193,7 @@ The setup page only offers Wi-Fi setup. Its firmware-upload, erase and info page
 1. Make the script executable (it already is in git): `chmod +x hooks/evo-hook.sh`.
 2. Merge `hooks/settings.snippet.json` into the `hooks` section of `~/.claude/settings.json`. Replace `/ABSOLUTE/PATH/TO` with this repo's path. If you already have hooks for an event, add this entry to its list instead of replacing it.
 3. Save the bridge token for the hook in `~/.config/evo-bridge/token` (see step 2), or set `EVO_TOKEN`. The hook passes it to curl on stdin, so it doesn't show up in the process list.
-4. The hook talks to the laptop bridge (`http://127.0.0.1:8787`) by default. For the ESP32, set `EVO_URL` to `http://evo.local` or, faster, the board's IP address (for example in your shell profile, or in the `env` section of `settings.json`): `"env": { "EVO_URL": "http://192.168.1.50" }`.
+4. The hook talks to the computer bridge (`http://127.0.0.1:8787`) by default. For the ESP32, set `EVO_URL` to `http://evo.local` or, faster, the board's IP address (for example in your shell profile, or in the `env` section of `settings.json`): `"env": { "EVO_URL": "http://192.168.1.50" }`.
 
 The hook sends its request in the background with a 1-second timeout. If the bridge is unplugged, Claude Code doesn't notice. Each request carries the event time (`&t=`), so the bridge ignores requests that arrive out of order. To see what the hook would send, run:
 
@@ -220,7 +220,7 @@ echo '{"hook_event_name":"PreToolUse","session_id":"t1","tool_name":"Bash"}' | E
 Every endpoint except `/` requires all three of these:
 
 - **`X-Evo-Token` header** matching `BRIDGE_TOKEN`. Otherwise the bridge returns 401.
-- **`Host` header** of `evo.local`, `evo` or the bridge's IP (laptop bridge: `127.0.0.1:8787` or `localhost:8787`). Otherwise it returns 403. This blocks web pages from reaching the bridge through DNS rebinding.
+- **`Host` header** of `evo.local`, `evo` or the bridge's IP (computer bridge: `127.0.0.1:8787` or `localhost:8787`). Otherwise it returns 403. This blocks web pages from reaching the bridge through DNS rebinding.
 - **No `Origin` header.** Otherwise it returns 403. Browsers add one; curl and the hook don't.
 
 Together, these mean a web page you visit can't drive the display, and other devices on your network need the token. The token travels in plain HTTP, so someone sniffing your Wi-Fi could still read it. That's acceptable for a display, but don't reuse the token anywhere else.
@@ -231,12 +231,12 @@ Together, these mean a web page you visit can't drive the display, and other dev
 | `POST /text` | Body (or form field `text`) scrolls across the display. Optional `?color=RRGGBB`. The current state returns after a few seconds. |
 | `GET /brightness/<0-100>` | Set display brightness. |
 | `GET /status` | JSON: transport, connected, displayed state, active text, Wi-Fi network, sessions. |
-| `GET /config`, `POST /config` | Laptop bridge only: read or change the settings (JSON, see `bridge/config.js`). |
-| `GET /preview/<state>` | Laptop bridge only: show that state's animation for 5 seconds. |
-| `GET /themes` | Laptop bridge only: the themes with a preview each; switch with `POST /config {"theme": "robot"}`. |
-| `GET /art`, `GET /art/<state>` | Laptop bridge only (all `/art` routes take `?theme=`, default the current one): which states have custom art; a state's frames as JSON. |
-| `POST /art/<state>` | Laptop bridge only: save frames (`{"frames":[{"pixels":[256 × "rrggbb"],"ms":100}]}`) as `tools/art/custom/<state>.gif`. |
-| `POST /art/<state>/try`, `DELETE /art/<state>` | Laptop bridge only: show frames without saving; go back to the starter art. |
+| `GET /config`, `POST /config` | Computer bridge only: read or change the settings (JSON, see `bridge/config.js`). |
+| `GET /preview/<state>` | Computer bridge only: show that state's animation for 5 seconds. |
+| `GET /themes` | Computer bridge only: the themes with a preview each; switch with `POST /config {"theme": "robot"}`. |
+| `GET /art`, `GET /art/<state>` | Computer bridge only (all `/art` routes take `?theme=`, default the current one): which states have custom art; a state's frames as JSON. |
+| `POST /art/<state>` | Computer bridge only: save frames (`{"frames":[{"pixels":[256 × "rrggbb"],"ms":100}]}`) as `tools/art/custom/<state>.gif`. |
+| `POST /art/<state>/try`, `DELETE /art/<state>` | Computer bridge only: show frames without saving; go back to the starter art. |
 | `POST /wifi/reset` | ESP32 only: reboot into the Wi-Fi setup hotspot (the saved network is kept). |
 
 ## Changing the art
@@ -254,7 +254,7 @@ Reflash afterwards. The firmware only replays the bytes generated here; all imag
 
 ## Tuning
 
-Laptop bridge: use the companion app, or edit `~/.config/evo-bridge/config.json`. ESP32: everything is in `firmware/include/config.h`, and each value can be overridden with a `-D` flag in `platformio.ini`:
+Computer bridge: use the companion app, or edit `~/.config/evo-bridge/config.json`. ESP32: everything is in `firmware/include/config.h`, and each value can be overridden with a `-D` flag in `platformio.ini`:
 
 - `EVO_MSG_INTERVAL_MS` (60): gap between messages. The Evo drops the link above about 30 messages/s.
 - `EVO_WORKING_DEBOUNCE_MS`, `EVO_MIN_DISPLAY_MS`, `EVO_ERROR_HOLD_MS`: anti-flicker timings.
