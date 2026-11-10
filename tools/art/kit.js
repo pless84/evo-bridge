@@ -112,6 +112,20 @@ const sparkle = (g, x, y) => stamp(g, SPARKLE, x, y);
 const CROSS = ['x   x', ' x x ', '  x  ', ' x x ', 'x   x'];
 const cross = (g, x, y, c = 'W') => stamp(g, CROSS, x, y, { x: c });
 
+// Simple eyes: two 2x2 blocks at columns L and R, rows y and y+1.
+const EYES = {
+  open: [['xx', 'xx'], ['xx', 'xx']],
+  up: [['xx', '  '], ['xx', '  ']],
+  closed: [['  ', 'xx'], ['  ', 'xx']],
+  happy: [[' x', 'x '], ['x ', ' x']],
+  upset: [['x ', ' x'], [' x', 'x ']],
+};
+function eyes(g, kind, L, R, y, c = 'K') {
+  stamp(g, EYES[kind][0], L, y, { x: c });
+  stamp(g, EYES[kind][1], R, y, { x: c });
+  return g;
+}
+
 // The working variants as small top-band overlays, frame by frame.
 // Each returns [{ draw(g), ms }] so a theme can put them over its own body.
 const WORK = {
@@ -136,5 +150,5 @@ function circle(cx, cy, r) {
 
 module.exports = {
   SIZE, ACCENT, blank, clone, frame, put, stamp, fromRows, shift, replace,
-  dots, spinner, prompt, pencil, book, question, check, bang, sparkle, cross, circle, WORK, RING,
+  dots, spinner, prompt, pencil, book, question, check, bang, sparkle, cross, circle, eyes, WORK, RING,
 };

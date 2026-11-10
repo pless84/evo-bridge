@@ -32,7 +32,7 @@ Computer bridge only: each session that waits for you gets one pixel along the t
 
 ## Themes
 
-Seven art sets, all with the same states. Pick one on the companion app's Display tab, or set `"theme"` in `config.json`; the computer bridge switches at once.
+Twelve art sets, all with the same states; the last five are for Christmas. Pick one on the companion app's Display tab, or set `"theme"` in `config.json`; the computer bridge switches at once.
 
 | Theme | Idea |
 |---|---|
@@ -43,6 +43,11 @@ Seven art sets, all with the same states. Pick one on the companion app's Displa
 | `sprout` | A potted plant: sways when idle, grows while working, droops when it needs you, blooms when done. |
 | `weather` | A little sky: stars when idle, rain while working, a rainbow when it needs you, sun when done. |
 | `terminal` | Plain text: a blinking cursor, a progress bar, `?`, `OK` and `ERR`. |
+| `santa` | Santa's face: the pompom on his hat swings, he calls out when he needs you and smiles when done. |
+| `snowman` | A snowman in falling snow: waves his stick arms when he needs you, throws them up when done. |
+| `reindeer` | A reindeer with a glowing red nose: it flashes orange when it needs you and turns green when done. |
+| `tree` | A Christmas tree whose lights show the state: blue while working, orange when it needs you, all lit when done. |
+| `bauble` | A Christmas ball whose colour shows the state: it swings gently when idle and cracks on an error. |
 
 Preview sheets (one row per state) are in `tools/art/preview/` (`sheet.png` is Blip). The themes are code in `tools/art/themes/`; after changing one, run `npm run art` in `tools/` to re-render the GIFs.
 
@@ -273,12 +278,12 @@ firmware/test/host/run.sh
 (cd tools && npm test)
 node bridge/test-state-machine.js
 node bridge/test-config.js
+node bridge/test-markers.js
 node bridge/test-art-routes.js
 ```
 
 The first command compiles the protocol encoder and state machine for the PC. It checks them against byte-for-byte output from the Node library (text, brightness, framing of every state) and covers debounce, error hold, multi-session, out-of-order events, stale sessions, timeout, and `millis()` wrap-around behavior. The second checks the PC-side encoder against the library's frozen output (all starter states, text, brightness) and tests GIF compositing and scaling.
 
-node bridge/test-markers.js
 ## Phase 2: inside the case (not started)
 
 `pio run -e uart-tap` builds the same firmware with a wired UART transport (`EVO_UART_*` pins/baud in `config.h`). It's untested: whether the LED board accepts Divoom frames on TX2/RX2 still needs sniffing. Notes:

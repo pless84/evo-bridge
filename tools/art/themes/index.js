@@ -18,6 +18,11 @@ const THEMES = {
   sprout: require('./sprout'),
   weather: require('./weather'),
   terminal: require('./terminal'),
+  santa: require('./santa'),
+  snowman: require('./snowman'),
+  reindeer: require('./reindeer'),
+  tree: require('./tree'),
+  bauble: require('./bauble'),
 };
 
 const DEFAULT_THEME = 'blip';
