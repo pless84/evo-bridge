@@ -115,9 +115,30 @@ async function main() {
   assert.strictEqual((await req('POST', '/config', { unreadMarkers: 'yes' })).code, 400);
   assert.strictEqual((await req('POST', '/config', { unreadMarkers: false })).code, 200);
   assert.strictEqual(JSON.parse((await req('GET', '/status')).body).unread_markers, false);
-  assert.strictEqual((await req('GET', '/state/thinking?session_id=u1')).code, 200);
+  assert.strictEqual((await req('GET', '/state/thinking?session_id=u1&name=my.proj%2F..%3Cx%3E')).code, 200);
   st = JSON.parse((await req('GET', '/status')).body);
   assert.strictEqual(st.sessions.find((s) => s.id === 'u1').unread, null);
+  assert.strictEqual(st.sessions.find((s) => s.id === 'u1').name, 'my.proj..x');
+  await req('GET', '/state/end?session_id=u1');
+
+  // under markers the idle pet stands in for the clock; clearing them lets the clock back
+  const status = async () => JSON.parse((await req('GET', '/status')).body);
+  const quick = { timing: { doneHoldMs: 0, minDisplayMs: 0, idleToClockMs: 40 } };
+  assert.strictEqual((await req('POST', '/config', { ...quick, unreadMarkers: true })).code, 200);
+  await req('GET', '/state/done?session_id=u2');
+  await new Promise((r) => setTimeout(r, 300));
+  st = await status();
+  assert.strictEqual(st.state, 'idle');
+  assert.strictEqual(st.sessions.find((s) => s.id === 'u2').unread, 'done');
+  await req('POST', '/config', { unreadMarkers: false });
+  assert.strictEqual((await status()).state, 'clock');
+  await req('POST', '/config', { unreadMarkers: true });
+  assert.strictEqual((await status()).state, 'idle');
+  assert.strictEqual((await req('GET', '/unread/clear')).code, 404);
+  assert.strictEqual((await req('POST', '/unread/clear')).code, 200);
+  st = await status();
+  assert.strictEqual(st.state, 'clock');
+  assert.strictEqual(st.sessions.find((s) => s.id === 'u2').unread, null);
 
   // still alive after all that
   assert.strictEqual((await req('GET', '/status')).code, 200);

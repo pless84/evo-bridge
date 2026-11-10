@@ -188,15 +188,20 @@ class Window(QMainWindow):
         self.link_label.setWordWrap(True)
         v.addWidget(self.link_label)
         v.addWidget(QLabel("Claude Code sessions:"))
-        self.sessions = QTableWidget(0, 3)
-        self.sessions.setHorizontalHeaderLabels(["Session", "State", "Last event"])
+        self.sessions = QTableWidget(0, 4)
+        self.sessions.setHorizontalHeaderLabels(["Session", "State", "Waiting for you", "Last event"])
         hdr = self.sessions.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        for col in (1, 2, 3):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         self.sessions.verticalHeader().hide()
         self.sessions.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         v.addWidget(self.sessions, 1)
+        self.clear_btn = QPushButton("Clear markers")
+        self.clear_btn.setToolTip("Finished sessions stop counting as waiting. Ones that need you stay.")
+        self.clear_btn.setEnabled(False)
+        self.clear_btn.clicked.connect(self.clear_markers)
+        v.addWidget(self.clear_btn, 0, Qt.AlignmentFlag.AlignRight)
         return w
 
     def _display_tab(self):
@@ -372,9 +377,11 @@ class Window(QMainWindow):
         menu = QMenu()
         show = QAction("Open", self, triggered=self.show_window)
         art = QAction("Art editor…", self, triggered=lambda: self.open_editor())
+        clear = QAction("Clear markers", self, triggered=self.clear_markers)
         quit_ = QAction("Quit", self, triggered=self.quit)
         menu.addAction(show)
         menu.addAction(art)
+        menu.addAction(clear)
         menu.addSeparator()
         menu.addAction(quit_)
         self.tray.setContextMenu(menu)
@@ -409,10 +416,12 @@ class Window(QMainWindow):
             self.status = None
             reason = "wrong token" if code == 401 else (body.strip() or f"HTTP {code}")
         s = self.status
+        waiting = 0
         if not s:
             color, title = OFFLINE, "Bridge not running"
             self.link_label.setText(f"No answer from {URL} ({reason}). Start it on the Service tab.")
             self.sessions.setRowCount(0)
+            self.clear_btn.setEnabled(False)
         else:
             st = s.get("state", "idle")
             color, title = COLORS.get(st, OFFLINE), LABELS.get(st, st)
@@ -438,14 +447,22 @@ class Window(QMainWindow):
             rows = s.get("sessions", [])
             self.sessions.setRowCount(len(rows))
             for i, r in enumerate(rows):
-                for j, val in enumerate((r["id"][:8] if len(r["id"]) > 12 else r["id"],
-                                         LABELS.get(r["state"], r["state"]), f"{r['idle_s']} s ago")):
+                short_id = r["id"][:8] if len(r["id"]) > 12 else r["id"]
+                unread = r.get("unread")
+                for j, val in enumerate((r.get("name") or short_id, LABELS.get(r["state"], r["state"]),
+                                         LABELS.get(unread, unread) if unread else "", f"{r['idle_s']} s ago")):
                     self.sessions.setItem(i, j, QTableWidgetItem(val))
+                self.sessions.item(i, 0).setToolTip(r["id"])
+                if unread:
+                    self.sessions.item(i, 2).setIcon(dot_icon(COLORS.get(unread, OFFLINE), 24))
+            waiting = sum(1 for r in rows if r.get("unread"))
+            # Only finished sessions can be cleared; the others still need you.
+            self.clear_btn.setEnabled(any(r.get("unread") == "done" for r in rows))
         self.state_dot.setPixmap(dot_icon(color, 28).pixmap(28, 28))
         self.state_label.setText(title)
         if self.tray:
             self.tray.setIcon(dot_icon(color))
-            self.tray.setToolTip(f"Evo: {title}")
+            self.tray.setToolTip(f"Evo: {title}" + (f"  ·  {waiting} waiting" if waiting else ""))
 
     def _report(self, code, body):
         if code != 200:
@@ -505,6 +522,9 @@ class Window(QMainWindow):
             self.pending_markers = False
             self._report(code, body)
         self.bridge.post("/config", json.dumps({"unreadMarkers": bool(on)}), done)
+
+    def clear_markers(self):
+        self.bridge.post("/unread/clear", "", self._report)
 
     def pick_color(self):
         c = QColorDialog.getColor(self.text_color, self, "Text colour")

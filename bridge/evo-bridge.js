@@ -2,8 +2,9 @@
 // Computer bridge: the same HTTP API as the ESP32 firmware, but this computer's
 // own Bluetooth talks to the Evo. No extra board needed.
 //
-//   GET  /state/<name>?session_id=<id>&t=<ms>
+//   GET  /state/<name>?session_id=<id>&t=<ms>&name=<project>
 //        name: idle | thinking | working[_bash|_edit|_read] | needs_input | done | error | end
+//   POST /unread/clear         finished sessions stop counting as unread
 //   POST /text                 body = text (or form field text=), ?color=RRGGBB
 //   GET  /brightness/<0-100>
 //   GET  /status               JSON
@@ -47,6 +48,7 @@ const markers = require('./markers');
 const MSG_INTERVAL_MS = 60;
 const BACKOFF_MIN_MS = 2000;
 const BACKOFF_MAX_MS = 60000;
+const TIME_SYNC_MS = 60 * 60 * 1000; // set the Evo's clock from this computer this often
 const TEXT_BASE_MS = 4000;
 const TEXT_PER_CHAR_MS = 350;
 const TEXT_MAX_MS = 30000;
@@ -133,6 +135,7 @@ async function connect() {
       // The Evo shows whatever it had: send our screen again.
       showCurrent();
       if (brightness !== null) sender.sendNext(encode.brightness(brightness)[0]);
+      syncTime();
     }
   });
   // A failed spawn may emit only 'error'; a normal end emits 'exit'. Handle once.
@@ -178,6 +181,16 @@ const sender = {
 let STATES = {};
 let overlay = null; // text or a preview on top of the state: { kind, label, msgs, until }
 let brightness = cfg.brightness;
+
+// The Evo keeps its own time and drifts, and knows nothing of summer time:
+// give it this computer's clock on every connect and once an hour.
+let timeSynced = null; // when the Evo last got the time (Date), for /status
+function syncTime() {
+  if (!connected) return;
+  const d = new Date();
+  sender.sendNext(encode.datetime(d)[0]);
+  timeSynced = d;
+}
 
 function stateMessages(s) {
   if (Object.hasOwn(STATES, s)) return STATES[s].msgs;
@@ -248,6 +261,7 @@ function authorized(req, res) {
 }
 
 const cleanId = (raw) => String(raw || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+const cleanName = (raw) => String(raw || '').replace(/[^A-Za-z0-9._-]/g, '').slice(0, 40);
 
 function readBody(req, limit = 4096) {
   return new Promise((resolve, reject) => {
@@ -283,8 +297,10 @@ function handleState(name, url, res) {
   const seq = Number(url.searchParams.get('t')) || 0;
   const t = now();
   if (name === 'end') machine.end(sid, t, seq);
-  else if (NAMES.includes(name)) machine.report(sid, name, t, seq);
-  else return send(res, 404, `unknown state: ${name}\n`);
+  else if (NAMES.includes(name)) {
+    machine.report(sid, name, t, seq);
+    machine.label(sid, cleanName(url.searchParams.get('name')));
+  } else return send(res, 404, `unknown state: ${name}\n`);
   update();
   send(res, 200, `ok ${machine.displayed}\n`);
 }
@@ -318,18 +334,19 @@ function handleBrightness(value, res) {
 function handleStatus(res) {
   const t = now();
   const sessions = [...machine.sessions.values()].filter((s) => !s.ended)
-    .map((s) => ({ id: s.id, state: s.state, unread: s.unread, idle_s: Math.floor((t - s.lastSeen) / 1000) }));
+    .map((s) => ({ id: s.id, name: s.name, state: s.state, unread: s.unread, idle_s: Math.floor((t - s.lastSeen) / 1000) }));
   send(res, 200, JSON.stringify({
     transport: 'computer-bluetooth',
     evo: MAC || null,
     connected,
-    state: machine.displayed,
+    state: screen().state, // what is on screen: the idle pet stands in for the clock under markers
     state_for_s: Math.floor((t - machine.displayedSince) / 1000),
     text: overlay && overlay.kind === 'text' ? overlay.label : null,
     preview: overlay && overlay.kind === 'preview' ? overlay.label : null,
     queued: sender.queue.length,
     sent: sender.sent,
     brightness,
+    time_synced: timeSynced ? timeSynced.toISOString() : null,
     theme: cfg.theme,
     unread_markers: cfg.unreadMarkers,
     uptime_s: Math.floor(process.uptime()),
@@ -527,6 +544,7 @@ const ROOT = 'Evo bridge (computer)\n'
   + '  POST /text   (body = text, ?color=RRGGBB)\n'
   + '  GET  /brightness/<0-100>\n'
   + '  GET  /status\n'
+  + '  POST /unread/clear\n'
   + '  GET  /config, POST /config (JSON)\n'
   + '  GET  /preview/<state>\n'
   + '  GET|POST|DELETE /art/<state>, POST /art/<state>/try\n';
@@ -539,6 +557,11 @@ const server = http.createServer((req, res) => {
   if (p === '/status' && req.method === 'GET') return handleStatus(res);
   if (p === '/text' && req.method === 'POST') return handleText(req, url, res).catch(() => send(res, 500, 'error\n'));
   if (p.startsWith('/state/')) return handleState(p.slice(7), url, res);
+  if (p === '/unread/clear' && req.method === 'POST') {
+    machine.clearUnread();
+    update();
+    return send(res, 200, 'ok\n');
+  }
   if (p.startsWith('/brightness/')) return handleBrightness(p.slice(12), res);
   if (p.startsWith('/preview/')) return handlePreview(p.slice(9), res);
   if (p === '/themes' && req.method === 'GET') return send(res, 200, themesJson(), 'application/json');
@@ -573,6 +596,7 @@ process.on('SIGTERM', shutdown);
   showCurrent();
   connect();
   setInterval(update, 20);
+  setInterval(syncTime, TIME_SYNC_MS);
 })().catch((e) => {
   console.error(e.message || e);
   process.exit(1);

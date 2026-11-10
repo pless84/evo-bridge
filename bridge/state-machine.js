@@ -57,7 +57,7 @@ class StateMachine {
       for (const s of this.sessions.values()) if (!worst || score(s) > score(worst)) worst = s;
       this.sessions.delete(worst.id);
     }
-    const s = { id, ended: false, state: 'idle', unread: null, pending: null, since: now, lastSeen: now, lastSeq: 0 };
+    const s = { id, name: '', ended: false, state: 'idle', unread: null, pending: null, since: now, lastSeen: now, lastSeq: 0 };
     this.sessions.set(id, s);
     return s;
   }
@@ -102,6 +102,20 @@ class StateMachine {
     s.pending = null;
     s.lastSeen = now;
     if (seq) s.lastSeq = seq;
+  }
+
+  // A name to show for the session (its project folder).
+  label(sessionId, name) {
+    const s = this.sessions.get(normId(sessionId));
+    if (s && !s.ended && name) s.name = name;
+  }
+
+  // Forget what has been seen: finished sessions stop being unread. A session
+  // that still needs input or is stuck on an error keeps waiting.
+  clearUnread() {
+    for (const s of this.sessions.values()) {
+      if (s.state !== 'needs_input' && s.state !== 'error') s.unread = null;
+    }
   }
 
   // What each session that waits for the user is waiting with, oldest session first.

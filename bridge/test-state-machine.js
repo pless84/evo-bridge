@@ -162,6 +162,25 @@ test('unread: one entry per waiting session, oldest session first; end clears', 
   assert.deepStrictEqual(m.unread(), []);
 });
 
+test('clearUnread forgets finished sessions, not ones that still wait', () => {
+  const m = sm();
+  m.report('a', 'done', 0); m.report('b', 'needs_input', 0); m.report('c', 'error', 0);
+  m.report('d', 'done', 0); m.tick(T.doneHoldMs);
+  assert.deepStrictEqual(m.unread(), ['done', 'needs_input', 'error', 'done']);
+  m.clearUnread();
+  assert.deepStrictEqual(m.unread(), ['needs_input', 'error']);
+  m.report('a', 'done', T.doneHoldMs + 10); // finishing again is unread again
+  assert.deepStrictEqual(m.unread(), ['done', 'needs_input', 'error']);
+});
+
+test('label names a live session', () => {
+  const m = sm();
+  m.report('a', 'working', 0);
+  m.label('a', 'my-project'); m.label('a', ''); m.label('nope', 'x');
+  assert.strictEqual(m.sessions.get('a').name, 'my-project');
+  assert.strictEqual(m.sessions.size, 1);
+});
+
 let failed = 0;
 for (const { name, fn } of tests) {
   try {

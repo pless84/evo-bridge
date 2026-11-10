@@ -82,6 +82,13 @@ function clock(colorHex = 'ffffff') {
   return [frame([0x45, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, ...rgbBytes(colorHex)])];
 }
 
+// Set the Evo's date and time (what its clock shows) from a Date, in local time.
+function datetime(date) {
+  const year = date.getFullYear();
+  return [frame([0x18, year % 100, Math.floor(year / 100), date.getMonth() + 1, date.getDate(),
+    date.getHours(), date.getMinutes(), date.getSeconds(), 0x00])];
+}
+
 function brightness(percent) {
   return [frame([0x74, Math.max(0, Math.min(100, Math.trunc(percent)))])];
 }
@@ -104,4 +111,4 @@ function text(str, fgHex = 'ffffff', bgHex = '000000') {
   ];
 }
 
-module.exports = { frame, picture, animation, clock, brightness, text, packPixels };
+module.exports = { frame, picture, animation, clock, datetime, brightness, text, packPixels };
