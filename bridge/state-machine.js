@@ -7,6 +7,12 @@ const NAMES = ['idle', 'thinking', 'working', 'working_bash', 'working_edit', 'w
 
 const isWorking = (s) => s === 'working' || s.startsWith('working_');
 
+// States that wait for the user. A session that reached one stays "unread"
+// until it moves on (a new prompt, a tool call, SessionEnd), also after its
+// `done` has faded to idle. Computer bridge only: it draws these as marker
+// pixels (markers.js); the firmware has no such thing.
+const WAITS_FOR_YOU = ['needs_input', 'error', 'done'];
+
 // Higher wins when several sessions are active.
 function priority(s) {
   if (s === 'needs_input') return 5;
@@ -51,12 +57,14 @@ class StateMachine {
       for (const s of this.sessions.values()) if (!worst || score(s) > score(worst)) worst = s;
       this.sessions.delete(worst.id);
     }
-    const s = { id, ended: false, state: 'idle', pending: null, since: now, lastSeen: now, lastSeq: 0 };
+    const s = { id, ended: false, state: 'idle', unread: null, pending: null, since: now, lastSeen: now, lastSeq: 0 };
     this.sessions.set(id, s);
     return s;
   }
 
-  static apply(s, st, now) {
+  // keepUnread: the state changed by a timer, not because anyone did something.
+  static apply(s, st, now, keepUnread = false) {
+    if (!keepUnread) s.unread = WAITS_FOR_YOU.includes(st) ? st : null;
     if (s.state !== st) {
       s.state = st;
       s.since = now;
@@ -90,9 +98,17 @@ class StateMachine {
     const s = this.sessions.get(normId(sessionId));
     if (!s || (seq && seq < s.lastSeq)) return;
     s.ended = true;
+    s.unread = null;
     s.pending = null;
     s.lastSeen = now;
     if (seq) s.lastSeq = seq;
+  }
+
+  // What each session that waits for the user is waiting with, oldest session first.
+  unread() {
+    const out = [];
+    for (const s of this.sessions.values()) if (!s.ended && s.unread) out.push(s.unread);
+    return out;
   }
 
   target(now) {
@@ -122,7 +138,7 @@ class StateMachine {
       }
       if (s.ended) continue;
       if (s.pending && since(now, s.since) >= t.errorHoldMs) StateMachine.apply(s, s.pending, now);
-      if (s.state === 'done' && since(now, s.since) >= t.doneHoldMs) StateMachine.apply(s, 'idle', now);
+      if (s.state === 'done' && since(now, s.since) >= t.doneHoldMs) StateMachine.apply(s, 'idle', now, true);
       if ((s.state === 'thinking' || isWorking(s.state)) && t.staleBusyMs && quiet >= t.staleBusyMs) {
         StateMachine.apply(s, 'idle', now);
       }

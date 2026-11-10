@@ -26,6 +26,10 @@ There are two ways to run the bridge, with the same HTTP API and the same art:
 
 With several Claude Code sessions, the display shows the most urgent one (needs_input > error > working > thinking > done > idle). It only goes idle once every session has finished.
 
+### Unread markers
+
+Computer bridge only: each session that waits for you gets one pixel along the top of the display, from the left, oldest session first. Orange means it needs your input, red that it hit an error, and green that it finished. A green marker stays after the pet has gone back to idle, until you send that session a new prompt or close it, so you can see at a glance how many sessions finished while you were away. While there are markers the idle pet stays instead of the clock, because the Evo's own clock can't carry them. Switch them off on the companion app's Display tab, or with `"unreadMarkers": false` in `config.json`.
+
 ## Themes
 
 Seven art sets, all with the same states. Pick one on the companion app's Display tab, or set `"theme"` in `config.json`; the computer bridge switches at once.
@@ -70,14 +74,14 @@ The computer bridge reads the art straight from `tools/art`, so after `npm run b
 
 `bridge/rfcomm-pipe.py` holds the Bluetooth connection: bytes from the bridge go to the Evo, and it exits when the link drops so the bridge can reconnect.
 
-Settings live in `~/.config/evo-bridge/config.json`: which Evo, brightness, and the timings from [Tuning](#tuning) (in ms; `idleToClockMs: 0` turns the clock off). Every field is optional. The companion app edits this file for you, and changes apply without a restart.
+Settings live in `~/.config/evo-bridge/config.json`: which Evo, brightness, theme, unread markers, and the timings from [Tuning](#tuning) (in ms; `idleToClockMs: 0` turns the clock off). Every field is optional. The companion app edits this file for you, and changes apply without a restart.
 
 ### Companion app
 
 A small tray app for the computer bridge (Qt, so it looks native on KDE):
 
 - **Status:** what the Evo shows, whether it's connected, and each Claude Code session. The tray icon takes the pet's colour.
-- **Display:** brightness, the [theme](#themes), scrolling text, preview each animation, and open the art editor.
+- **Display:** brightness, the [theme](#themes), the [unread markers](#unread-markers), scrolling text, preview each animation, and open the art editor.
 - **Settings:** pick the Evo from your paired devices, and change the timings.
 - **Service:** start, stop or restart the bridge, start it at login, and read its log.
 
@@ -274,6 +278,7 @@ node bridge/test-art-routes.js
 
 The first command compiles the protocol encoder and state machine for the PC. It checks them against byte-for-byte output from the Node library (text, brightness, framing of every state) and covers debounce, error hold, multi-session, out-of-order events, stale sessions, timeout, and `millis()` wrap-around behavior. The second checks the PC-side encoder against the library's frozen output (all starter states, text, brightness) and tests GIF compositing and scaling.
 
+node bridge/test-markers.js
 ## Phase 2: inside the case (not started)
 
 `pio run -e uart-tap` builds the same firmware with a wired UART transport (`EVO_UART_*` pins/baud in `config.h`). It's untested: whether the LED board accepts Divoom frames on TX2/RX2 still needs sniffing. Notes:

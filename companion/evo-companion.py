@@ -150,6 +150,7 @@ class Window(QMainWindow):
         self.themes = None          # from GET /themes
         self.themes_loading = False
         self.pending_theme = None   # chosen, not yet confirmed by the bridge
+        self.pending_markers = False  # same, for the unread markers checkbox
 
         tabs = QTabWidget()
         tabs.addTab(self._status_tab(), "Status")
@@ -242,6 +243,11 @@ class Window(QMainWindow):
         tv.addWidget(self.theme_box)
         tv.addWidget(self.theme_desc)
         v.addWidget(g)
+
+        self.markers = QCheckBox("Show a pixel along the top for each session that waits for you")
+        self.markers.setToolTip("Orange: needs you. Red: error. Green: finished, and you haven't answered yet.")
+        self.markers.clicked.connect(self.save_markers)
+        v.addWidget(self.markers)
 
         edit = QPushButton("Edit the animations…")
         edit.setToolTip("Draw your own pixel art for each state")
@@ -427,6 +433,8 @@ class Window(QMainWindow):
                 self.bright.setValue(s["brightness"])
                 self.bright.blockSignals(False)
                 self.bright_label.setText(f"{s['brightness']} %")
+            if not self.pending_markers and "unread_markers" in s:
+                self.markers.setChecked(bool(s["unread_markers"]))
             rows = s.get("sessions", [])
             self.sessions.setRowCount(len(rows))
             for i, r in enumerate(rows):
@@ -489,6 +497,14 @@ class Window(QMainWindow):
     def save_brightness(self):
         self.bright_timer.stop()
         self.bridge.post("/config", json.dumps({"brightness": self.bright.value()}), self._report)
+
+    def save_markers(self, on):
+        self.pending_markers = True  # until the bridge answers, polls must not flip the box back
+
+        def done(code, body):
+            self.pending_markers = False
+            self._report(code, body)
+        self.bridge.post("/config", json.dumps({"unreadMarkers": bool(on)}), done)
 
     def pick_color(self):
         c = QColorDialog.getColor(self.text_color, self, "Text colour")

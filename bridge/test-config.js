@@ -33,6 +33,8 @@ ok({ timing: { sessionTimeoutMs: 60000, staleBusyMs: 0, idleToClockMs: 0 } });
 bad({ constructor: 1 }, /unknown setting/);
 ok({ theme: 'robot' });
 bad({ theme: 'nope' }, /theme/);
+ok({ unreadMarkers: false });
+bad({ unreadMarkers: 1 }, /unreadMarkers/);
 bad({ theme: 'constructor' }, /theme/);                     // prototype keys are not settings
 bad({ timing: { toString: 5 } }, /unknown timing/);
 

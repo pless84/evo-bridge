@@ -66,7 +66,7 @@ async function stateMessages(state, opts = {}) {
     }));
   }
   const msgs = animated ? encode.animation(frames) : encode.picture(frames[0].pixels);
-  return { msgs, file: path.relative(__dirname, file) };
+  return { msgs, frames, animated, file: path.relative(__dirname, file) };
 }
 
 function cBytes(buf) {
@@ -78,7 +78,7 @@ function cBytes(buf) {
 }
 
 // Returns the text of states.h. starterOnly ignores art/custom (used by tests).
-// Every state's messages: { name: { msgs, file } }. Also used by the computer
+// Every state's messages: { name: { msgs, frames, animated, file } }. Also used by the computer
 // bridge (bridge/evo-bridge.js), which sends these bytes itself.
 async function buildStates(opts = {}) {
   const states = {};

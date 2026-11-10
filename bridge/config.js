@@ -14,6 +14,7 @@ const DEFAULTS = {
   mac: '',          // '' = the paired device named TimeBox*
   brightness: null, // null = leave the Evo's own setting alone
   theme: themes.DEFAULT_THEME, // which art set (tools/art/themes)
+  unreadMarkers: true, // a pixel along the top for each session that waits for you
   timing: {
     minDisplayMs: 800,
     workingDebounceMs: 1500,
@@ -47,6 +48,7 @@ function problems(c) {
   if (has(c, 'theme') && !themes.isTheme(c.theme)) {
     out.push(`theme must be one of: ${Object.keys(themes.THEMES).join(', ')}`);
   }
+  if (has(c, 'unreadMarkers') && typeof c.unreadMarkers !== 'boolean') out.push('unreadMarkers must be true or false');
   if (has(c, 'timing')) {
     if (c.timing === null || typeof c.timing !== 'object' || Array.isArray(c.timing)) {
       out.push('timing must be an object');
@@ -67,6 +69,7 @@ function merge(base, c) {
     mac: has(c, 'mac') ? c.mac : base.mac,
     brightness: has(c, 'brightness') ? c.brightness : base.brightness,
     theme: has(c, 'theme') ? c.theme : base.theme,
+    unreadMarkers: has(c, 'unreadMarkers') ? c.unreadMarkers : base.unreadMarkers,
     timing: { ...base.timing, ...(c.timing || {}) },
   };
 }

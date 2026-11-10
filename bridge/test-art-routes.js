@@ -107,6 +107,18 @@ async function main() {
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(tmp, 'config.json'), 'utf8')).theme, 'robot');
   fs.rmSync(path.join(ART, 'weather'), { recursive: true });
 
+  // unread markers: a finished session is reported as unread; the setting can be switched off
+  assert.strictEqual((await req('GET', '/state/done?session_id=u1')).code, 200);
+  let st = JSON.parse((await req('GET', '/status')).body);
+  assert.strictEqual(st.unread_markers, true);
+  assert.strictEqual(st.sessions.find((s) => s.id === 'u1').unread, 'done');
+  assert.strictEqual((await req('POST', '/config', { unreadMarkers: 'yes' })).code, 400);
+  assert.strictEqual((await req('POST', '/config', { unreadMarkers: false })).code, 200);
+  assert.strictEqual(JSON.parse((await req('GET', '/status')).body).unread_markers, false);
+  assert.strictEqual((await req('GET', '/state/thinking?session_id=u1')).code, 200);
+  st = JSON.parse((await req('GET', '/status')).body);
+  assert.strictEqual(st.sessions.find((s) => s.id === 'u1').unread, null);
+
   // still alive after all that
   assert.strictEqual((await req('GET', '/status')).code, 200);
 }

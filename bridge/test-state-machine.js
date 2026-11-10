@@ -132,6 +132,36 @@ test('eviction keeps a session waiting for the user', () => {
   assert(m.sessions.has('waiting'));
 });
 
+test('unread: done stays unread after it fades to idle, until the session moves on', () => {
+  const m = sm();
+  m.report('a', 'working', 0); m.tick(0);
+  assert.deepStrictEqual(m.unread(), []);
+  m.report('a', 'done', 1000); m.tick(1000);
+  assert.deepStrictEqual(m.unread(), ['done']);
+  m.tick(1000 + T.doneHoldMs);
+  assert.strictEqual(m.displayed, 'idle');
+  assert.deepStrictEqual(m.unread(), ['done']);
+  m.report('a', 'thinking', 50000);
+  assert.deepStrictEqual(m.unread(), []);
+});
+
+test('unread: one entry per waiting session, oldest session first; end clears', () => {
+  const m = sm();
+  m.report('a', 'working', 0); m.report('b', 'working', 0); m.report('c', 'working', 0);
+  m.report('c', 'needs_input', 10); m.report('a', 'done', 20);
+  assert.deepStrictEqual(m.unread(), ['done', 'needs_input']);
+  m.report('c', 'working_bash', 30); // answered
+  assert.deepStrictEqual(m.unread(), ['done']);
+  m.report('b', 'error', 40);
+  assert.deepStrictEqual(m.unread(), ['done', 'error']);
+  m.report('b', 'working', 50); // queued behind the error hold
+  assert.deepStrictEqual(m.unread(), ['done', 'error']);
+  m.tick(40 + T.errorHoldMs);
+  assert.deepStrictEqual(m.unread(), ['done']);
+  m.end('a', 5000);
+  assert.deepStrictEqual(m.unread(), []);
+});
+
 let failed = 0;
 for (const { name, fn } of tests) {
   try {

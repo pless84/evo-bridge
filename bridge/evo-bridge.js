@@ -43,6 +43,7 @@ const artIo = require('../tools/art-io');
 const themes = require('../tools/art/themes');
 const { StateMachine, NAMES, isWorking } = require('./state-machine');
 const config = require('./config');
+const markers = require('./markers');
 const MSG_INTERVAL_MS = 60;
 const BACKOFF_MIN_MS = 2000;
 const BACKOFF_MAX_MS = 60000;
@@ -184,8 +185,35 @@ function stateMessages(s) {
   return [];
 }
 
+// The state's animation with the unread markers drawn on it. Encoded on
+// first use; markerCache is emptied whenever the art changes.
+let markerCache = new Map();
+function markedMessages(s, marks) {
+  const name = !Object.hasOwn(STATES, s) && isWorking(s) ? 'working' : s;
+  const art = Object.hasOwn(STATES, name) ? STATES[name] : null;
+  if (!marks.length || !art || !art.frames) return stateMessages(s);
+  const key = `${name}|${marks.join(',')}`;
+  if (!markerCache.has(key)) {
+    const frames = art.frames.map(({ pixels, ms }) => ({ pixels: markers.draw(pixels, marks), ms }));
+    markerCache.set(key, art.animated ? encode.animation(frames) : encode.picture(frames[0].pixels));
+  }
+  return markerCache.get(key);
+}
+
+// What the state screen is: the state, and a marker per session that waits
+// for you. The Evo's own clock cannot carry markers, so the idle pet stays
+// while there are any.
+function screen() {
+  const marks = cfg.unreadMarkers ? machine.unread() : [];
+  const state = machine.displayed === 'clock' && marks.length ? 'idle' : machine.displayed;
+  return { state, marks };
+}
+
+let shown = ''; // the screen() last sent, to notice marker changes
 function showCurrent() {
-  sender.replace(overlay ? overlay.msgs : stateMessages(machine.displayed));
+  const { state, marks } = screen();
+  shown = `${state}|${marks.join(',')}`;
+  sender.replace(overlay ? overlay.msgs : markedMessages(state, marks));
 }
 
 function update() {
@@ -194,10 +222,9 @@ function update() {
     overlay = null;
     showCurrent();
   }
-  if (machine.tick(t)) {
-    log(`[state] ${machine.displayed}`);
-    if (!overlay) showCurrent();
-  }
+  if (machine.tick(t)) log(`[state] ${machine.displayed}`);
+  const { state, marks } = screen();
+  if (!overlay && `${state}|${marks.join(',')}` !== shown) showCurrent();
   sender.loop(t);
 }
 
@@ -291,7 +318,7 @@ function handleBrightness(value, res) {
 function handleStatus(res) {
   const t = now();
   const sessions = [...machine.sessions.values()].filter((s) => !s.ended)
-    .map((s) => ({ id: s.id, state: s.state, idle_s: Math.floor((t - s.lastSeen) / 1000) }));
+    .map((s) => ({ id: s.id, state: s.state, unread: s.unread, idle_s: Math.floor((t - s.lastSeen) / 1000) }));
   send(res, 200, JSON.stringify({
     transport: 'computer-bluetooth',
     evo: MAC || null,
@@ -304,6 +331,7 @@ function handleStatus(res) {
     sent: sender.sent,
     brightness,
     theme: cfg.theme,
+    unread_markers: cfg.unreadMarkers,
     uptime_s: Math.floor(process.uptime()),
     sessions,
   }) + '\n', 'application/json');
@@ -343,9 +371,10 @@ let activeTheme = null; // the theme STATES holds
 async function reloadState(state, theme) {
   await themeLoad; // a theme switch in progress read the files before this save
   if (theme !== activeTheme) return; // edited another theme; nothing on screen changes
-  const { msgs } = await buildStateMessages(state, { theme });
+  const { msgs, frames, animated } = await buildStateMessages(state, { theme });
   if (theme !== activeTheme) return; // switched while loading
-  STATES[state] = { msgs };
+  STATES[state] = { msgs, frames, animated };
+  markerCache = new Map();
   if (!overlay) showCurrent(); // the displayed state may be the one that changed
 }
 
@@ -360,7 +389,9 @@ function loadTheme(theme) {
     try {
       const built = await buildStates({ theme });
       if (gen !== themeGen) return null;
-      STATES = Object.fromEntries(Object.entries(built).map(([k, v]) => [k, { msgs: v.msgs }]));
+      STATES = Object.fromEntries(Object.entries(built)
+        .map(([k, v]) => [k, { msgs: v.msgs, frames: v.frames, animated: v.animated }]));
+      markerCache = new Map();
       activeTheme = theme;
       log(`[art] theme: ${theme}`);
       if (!overlay) showCurrent();
