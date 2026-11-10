@@ -76,6 +76,12 @@ esac
 # Keep the session id URL-safe (the bridge strips anything else anyway).
 session="${session//[^A-Za-z0-9_-]/}"
 url="$EVO_URL/state/$state?session_id=${session:-default}&t=$stamp"
+# The project folder's name, so the companion app can say which session waits.
+project="$(field .cwd)"
+project="${project%/}"
+project="${project##*/}"
+project="${project//[^A-Za-z0-9._-]/}"
+[[ -n "$project" && "$state" != end ]] && url="$url&name=${project:0:40}"
 
 if [[ "${EVO_HOOK_DEBUG:-0}" == 1 ]]; then
   echo "$url"

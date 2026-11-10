@@ -28,7 +28,7 @@ With several Claude Code sessions, the display shows the most urgent one (needs_
 
 ### Unread markers
 
-Computer bridge only: each session that waits for you gets one pixel along the top of the display, from the left, oldest session first. Orange means it needs your input, red that it hit an error, and green that it finished. A green marker stays after the pet has gone back to idle, until you send that session a new prompt or close it, so you can see at a glance how many sessions finished while you were away. While there are markers the idle pet stays instead of the clock, because the Evo's own clock can't carry them. Switch them off on the companion app's Display tab, or with `"unreadMarkers": false` in `config.json`.
+Computer bridge only: each session that waits for you gets one pixel along the top of the display, from the left, oldest session first. Orange means it needs your input, red that it hit an error, and green that it finished. A green marker stays after the pet has gone back to idle, until you send that session a new prompt, close it, or choose **Clear markers** in the companion app (or its tray menu), so you can see at a glance how many sessions finished while you were away. While there are markers the idle pet stays instead of the clock, because the Evo's own clock can't carry them. Switch them off on the companion app's Display tab, or with `"unreadMarkers": false` in `config.json`.
 
 ## Themes
 
@@ -85,7 +85,7 @@ Settings live in `~/.config/evo-bridge/config.json`: which Evo, brightness, them
 
 A small tray app for the computer bridge (Qt, so it looks native on KDE):
 
-- **Status:** what the Evo shows, whether it's connected, and each Claude Code session. The tray icon takes the pet's colour.
+- **Status:** what the Evo shows, whether it's connected, and each Claude Code session by project folder, with the ones waiting for you marked. The tray icon takes the pet's colour, and its tooltip counts the waiting sessions.
 - **Display:** brightness, the [theme](#themes), the [unread markers](#unread-markers), scrolling text, preview each animation, and open the art editor.
 - **Settings:** pick the Evo from your paired devices, and change the timings.
 - **Service:** start, stop or restart the bridge, start it at login, and read its log.
@@ -204,7 +204,7 @@ The setup page only offers Wi-Fi setup. Its firmware-upload, erase and info page
 3. Save the bridge token for the hook in `~/.config/evo-bridge/token` (see step 2), or set `EVO_TOKEN`. The hook passes it to curl on stdin, so it doesn't show up in the process list.
 4. The hook talks to the computer bridge (`http://127.0.0.1:8787`) by default. For the ESP32, set `EVO_URL` to `http://evo.local` or, faster, the board's IP address (for example in your shell profile, or in the `env` section of `settings.json`): `"env": { "EVO_URL": "http://192.168.1.50" }`.
 
-The hook sends its request in the background with a 1-second timeout. If the bridge is unplugged, Claude Code doesn't notice. Each request carries the event time (`&t=`), so the bridge ignores requests that arrive out of order. To see what the hook would send, run:
+The hook sends its request in the background with a 1-second timeout. If the bridge is unplugged, Claude Code doesn't notice. Each request carries the event time (`&t=`), so the bridge ignores requests that arrive out of order, and the project folder's name (`&name=`), which the companion app shows. To see what the hook would send, run:
 
 ```bash
 echo '{"hook_event_name":"PreToolUse","session_id":"t1","tool_name":"Bash"}' | EVO_HOOK_DEBUG=1 hooks/evo-hook.sh
@@ -236,7 +236,8 @@ Together, these mean a web page you visit can't drive the display, and other dev
 
 | Request | Effect |
 |---|---|
-| `GET /state/<state>?session_id=<id>&t=<ms>` | Report a session's state. `end` removes the session. `t` is optional; older events than the newest seen are dropped. |
+| `GET /state/<state>?session_id=<id>&t=<ms>&name=<project>` | Report a session's state. `end` removes the session. `t` is optional; older events than the newest seen are dropped. `name` is optional and computer bridge only: a label for the session (the hook sends the project folder's name). |
+| `POST /unread/clear` | Computer bridge only: finished sessions stop counting as [unread](#unread-markers). |
 | `POST /text` | Body (or form field `text`) scrolls across the display. Optional `?color=RRGGBB`. The current state returns after a few seconds. |
 | `GET /brightness/<0-100>` | Set display brightness. |
 | `GET /status` | JSON: transport, connected, displayed state, active text, Wi-Fi network, sessions. |
