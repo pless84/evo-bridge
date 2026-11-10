@@ -24,6 +24,8 @@ There are two ways to run the bridge, with the same HTTP API and the same art:
 | `error` | red, `!`, shaking | a tool call failed |
 | `clock` | the Evo's own clock | everything idle for 2 minutes |
 
+The computer bridge sets the Evo's clock from the computer's time every time it connects and once an hour after that.
+
 With several Claude Code sessions, the display shows the most urgent one (needs_input > error > working > thinking > done > idle). It only goes idle once every session has finished.
 
 ### Unread markers

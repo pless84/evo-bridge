@@ -39,6 +39,13 @@ test('text and brightness match the library', () => {
   assert.deepStrictEqual(encode.brightness(50)[0], fx.FIX_BRIGHTNESS_50);
 });
 
+test('datetime carries the local date and time', () => {
+  // 0x18, year % 100, century, month, day, hour, minute, second, 0 (the library's date_time.ts)
+  const [msg, ...rest] = encode.datetime(new Date(2026, 10, 10, 12, 34, 56));
+  assert.strictEqual(rest.length, 0);
+  assert.strictEqual(msg.toString('hex'), '010b00181a140b0a0c22380' + '0cc0002');
+});
+
 test('pixel packing is LSB first with minimal bits', () => {
   assert.deepStrictEqual(encode.packPixels([1, 0, 1, 1, 0, 0, 0, 0], 2), [0b00001101]);
   assert.deepStrictEqual(encode.packPixels([3, 1], 3), [0b0111]);  // 2 bits each

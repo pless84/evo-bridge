@@ -48,6 +48,7 @@ const markers = require('./markers');
 const MSG_INTERVAL_MS = 60;
 const BACKOFF_MIN_MS = 2000;
 const BACKOFF_MAX_MS = 60000;
+const TIME_SYNC_MS = 60 * 60 * 1000; // set the Evo's clock from this computer this often
 const TEXT_BASE_MS = 4000;
 const TEXT_PER_CHAR_MS = 350;
 const TEXT_MAX_MS = 30000;
@@ -134,6 +135,7 @@ async function connect() {
       // The Evo shows whatever it had: send our screen again.
       showCurrent();
       if (brightness !== null) sender.sendNext(encode.brightness(brightness)[0]);
+      syncTime();
     }
   });
   // A failed spawn may emit only 'error'; a normal end emits 'exit'. Handle once.
@@ -179,6 +181,16 @@ const sender = {
 let STATES = {};
 let overlay = null; // text or a preview on top of the state: { kind, label, msgs, until }
 let brightness = cfg.brightness;
+
+// The Evo keeps its own time and drifts, and knows nothing of summer time:
+// give it this computer's clock on every connect and once an hour.
+let timeSynced = null; // when the Evo last got the time (Date), for /status
+function syncTime() {
+  if (!connected) return;
+  const d = new Date();
+  sender.sendNext(encode.datetime(d)[0]);
+  timeSynced = d;
+}
 
 function stateMessages(s) {
   if (Object.hasOwn(STATES, s)) return STATES[s].msgs;
@@ -334,6 +346,7 @@ function handleStatus(res) {
     queued: sender.queue.length,
     sent: sender.sent,
     brightness,
+    time_synced: timeSynced ? timeSynced.toISOString() : null,
     theme: cfg.theme,
     unread_markers: cfg.unreadMarkers,
     uptime_s: Math.floor(process.uptime()),
@@ -583,6 +596,7 @@ process.on('SIGTERM', shutdown);
   showCurrent();
   connect();
   setInterval(update, 20);
+  setInterval(syncTime, TIME_SYNC_MS);
 })().catch((e) => {
   console.error(e.message || e);
   process.exit(1);
