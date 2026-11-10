@@ -275,6 +275,12 @@ Computer bridge: use the companion app, or edit `~/.config/evo-bridge/config.jso
 ## Tests
 
 ```bash
+./test.sh
+```
+
+runs everything, and GitHub Actions runs the same on every push. The suites are:
+
+```bash
 firmware/test/host/run.sh
 (cd tools && npm test)
 node bridge/test-state-machine.js
@@ -283,7 +289,7 @@ node bridge/test-markers.js
 node bridge/test-art-routes.js
 ```
 
-The first command compiles the protocol encoder and state machine for the PC. It checks them against byte-for-byte output from the Node library (text, brightness, framing of every state) and covers debounce, error hold, multi-session, out-of-order events, stale sessions, timeout, and `millis()` wrap-around behavior. The second checks the PC-side encoder against the library's frozen output (all starter states, text, brightness) and tests GIF compositing and scaling.
+The first of these compiles the protocol encoder and state machine for the PC. It checks them against byte-for-byte output from the Node library (text, brightness, framing of every state) and covers debounce, error hold, multi-session, out-of-order events, stale sessions, timeout, and `millis()` wrap-around behavior. The second checks the PC-side encoder against the library's frozen output (all starter states, text, brightness) and tests GIF compositing and scaling.
 
 ## Phase 2: inside the case (not started)
 
