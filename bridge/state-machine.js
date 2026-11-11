@@ -118,6 +118,33 @@ class StateMachine {
     }
   }
 
+  // Computer bridge only (no firmware twin): the user has seen the alert.
+  // Sessions waiting for the user (all, or the one given) go back to idle, or
+  // on to the state queued behind an error, and stop being unread. Shown at
+  // once, without the minimum display time. Returns how many were dismissed.
+  dismiss(now, sessionId = null) {
+    const id = sessionId === null ? null : normId(sessionId);
+    let n = 0;
+    for (const s of this.sessions.values()) {
+      if (s.ended || (id !== null && s.id !== id)) continue;
+      const waiting = WAITS_FOR_YOU.includes(s.state);
+      if (!waiting && !s.unread) continue;
+      StateMachine.apply(s, waiting ? s.pending || 'idle' : s.state, now);
+      n++;
+    }
+    if (!n) return 0;
+    const tgt = this.target(now);
+    if (tgt === 'idle') {
+      this.allIdle = true;
+      this.allIdleSince = now;
+    }
+    if (tgt !== this.displayed && this.displayed !== 'clock') {
+      this.displayed = tgt;
+      this.displayedSince = now;
+    }
+    return n;
+  }
+
   // What each session that waits for the user is waiting with, oldest session first.
   unread() {
     const out = [];

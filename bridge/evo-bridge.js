@@ -5,6 +5,7 @@
 //   GET  /state/<name>?session_id=<id>&t=<ms>&name=<project>
 //        name: idle | thinking | working[_bash|_edit|_read] | needs_input | done | error | end
 //   POST /unread/clear         finished sessions stop counting as unread
+//   POST /dismiss?session_id=  seen: sessions waiting for you (all, or that one) go back to idle
 //   POST /text                 body = text (or form field text=), ?color=RRGGBB
 //   GET  /brightness/<0-100>
 //   GET  /status               JSON
@@ -547,6 +548,7 @@ const ROOT = 'Evo bridge (computer)\n'
   + '  GET  /brightness/<0-100>\n'
   + '  GET  /status\n'
   + '  POST /unread/clear\n'
+  + '  POST /dismiss[?session_id=ID]\n'
   + '  GET  /config, POST /config (JSON)\n'
   + '  GET  /preview/<state>\n'
   + '  GET|POST|DELETE /art/<state>, POST /art/<state>/try\n';
@@ -563,6 +565,12 @@ const server = http.createServer((req, res) => {
     machine.clearUnread();
     update();
     return send(res, 200, 'ok\n');
+  }
+  if (p === '/dismiss' && req.method === 'POST') {
+    const n = machine.dismiss(now(), url.searchParams.get('session_id'));
+    if (n) log(`[state] dismissed ${n}; showing ${machine.displayed}`);
+    update();
+    return send(res, 200, JSON.stringify({ dismissed: n }) + '\n', 'application/json');
   }
   if (p.startsWith('/brightness/')) return handleBrightness(p.slice(12), res);
   if (p.startsWith('/preview/')) return handlePreview(p.slice(9), res);

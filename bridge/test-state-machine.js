@@ -196,6 +196,46 @@ test('wake: does nothing while a session is busy', () => {
   assert(!m.wake(100) && m.displayed === 'working');
 });
 
+test('dismiss: a question goes back to idle at once, without its marker', () => {
+  const m = sm();
+  m.report('a', 'needs_input', 0); m.tick(0);
+  assert.strictEqual(m.dismiss(100), 1);
+  assert.strictEqual(m.displayed, 'idle'); // no minimum display time
+  assert.strictEqual(m.sessions.get('a').state, 'idle');
+  assert.deepStrictEqual(m.unread(), []);
+  assert(!m.tick(T.idleToClockMs + 99) && m.tick(T.idleToClockMs + 100) && m.displayed === 'clock');
+});
+
+test('dismiss: one session; the other keeps waiting and stays on screen', () => {
+  const m = sm();
+  m.report('a', 'error', 0);
+  m.report('b', 'needs_input', 10); m.tick(10);
+  assert.strictEqual(m.dismiss(100, 'b'), 1);
+  assert.strictEqual(m.displayed, 'error');
+  assert.deepStrictEqual(m.unread(), ['error']);
+  assert.strictEqual(m.dismiss(200, 'nope'), 0);
+});
+
+test('dismiss: an error moves on to the state queued behind it', () => {
+  const m = sm();
+  m.report('a', 'error', 0); m.tick(0);
+  m.report('a', 'working', 500); // held behind the error
+  m.dismiss(600);
+  assert.strictEqual(m.sessions.get('a').state, 'working');
+  assert.strictEqual(m.displayed, 'working');
+});
+
+test('dismiss: busy sessions are left alone; a faded done marker is cleared', () => {
+  const m = sm();
+  m.report('a', 'done', 0);
+  m.tick(T.doneHoldMs); // a: idle, still unread
+  m.report('b', 'working', T.doneHoldMs); m.tick(T.doneHoldMs);
+  assert.strictEqual(m.dismiss(T.doneHoldMs + 100), 1);
+  assert.deepStrictEqual(m.unread(), []);
+  assert.strictEqual(m.sessions.get('b').state, 'working');
+  assert.strictEqual(m.displayed, 'working');
+});
+
 let failed = 0;
 for (const { name, fn } of tests) {
   try {
