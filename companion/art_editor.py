@@ -282,7 +282,7 @@ class ArtEditor(QWidget):
         if self.state is not None and self.isVisible() and not self.dirty and theme != self.theme:
             self.load(self.state)
         elif self.dirty and theme != self.theme:
-            self.say(f"The Evo switched themes; you are still editing {self.theme}. Save or revert to continue there.")
+            self.say(f"The Evo switched characters; you are still editing {self.theme}. Save or revert to continue there.")
 
     def open_state(self, state=None):
         """Show the window, loading `state` (or the first one)."""
@@ -619,7 +619,7 @@ class ArtEditor(QWidget):
 
     def _refresh_title(self):
         label = STATE_LABELS.get(self.state, self.state or "")
-        theme = f"{self.theme_label if self.theme == self.want_theme else self.theme} theme · " if self.theme else ""
+        theme = f"{self.theme_label if self.theme == self.want_theme else self.theme} · " if self.theme else ""
         self.source.setText(theme + ("your art" if self.custom else "starter art") + (" · unsaved changes" if self.dirty else ""))
         self.setWindowTitle(f"Evo art editor – {label}{' *' if self.dirty else ''}")
         self.starter_btn.setEnabled(self.custom)

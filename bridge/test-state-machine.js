@@ -181,6 +181,21 @@ test('label names a live session', () => {
   assert.strictEqual(m.sessions.size, 1);
 });
 
+test('wake: from the clock back to the idle pet, and the clock waits again', () => {
+  const m = sm();
+  m.tick(0);
+  assert(m.tick(120000) && m.displayed === 'clock');
+  assert(m.wake(130000) && m.displayed === 'idle');
+  assert(!m.tick(249999) && m.displayed === 'idle');
+  assert(m.tick(250000) && m.displayed === 'clock');
+});
+
+test('wake: does nothing while a session is busy', () => {
+  const m = sm();
+  m.report('a', 'working', 0); m.tick(0);
+  assert(!m.wake(100) && m.displayed === 'working');
+});
+
 let failed = 0;
 for (const { name, fn } of tests) {
   try {

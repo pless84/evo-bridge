@@ -141,6 +141,19 @@ class StateMachine {
     return best;
   }
 
+  // Computer bridge only (no firmware twin): when everything is idle, show
+  // the idle pet again and restart the wait for the clock, e.g. after the
+  // character changed. Returns true when the displayed state changed.
+  wake(now) {
+    if (this.target(now) !== 'idle') return false;
+    this.allIdle = true;
+    this.allIdleSince = now;
+    if (this.displayed !== 'clock') return false;
+    this.displayed = 'idle';
+    this.displayedSince = now;
+    return true;
+  }
+
   // Advance timers. Returns true when the displayed state changed.
   tick(now) {
     const t = this.t;

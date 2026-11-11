@@ -25,10 +25,10 @@ from PySide6.QtCore import QByteArray, QProcess, QSettings, QSize, Qt, QTimer, Q
 from PySide6.QtGui import QAction, QColor, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QFormLayout,
+    QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QFormLayout,
     QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow,
     QMenu, QMessageBox, QPlainTextEdit, QPushButton, QSlider, QSystemTrayIcon,
-    QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
+    QScrollArea, QTableWidget, QTableWidgetItem, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
 URL = os.environ.get("EVO_URL", "http://127.0.0.1:8787").rstrip("/")
@@ -36,6 +36,7 @@ TOKEN_FILE = Path(os.environ.get("EVO_TOKEN_FILE", Path.home() / ".config/evo-br
 SERVICE = "evo-bridge"
 AUTOSTART = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "autostart/evo-companion.desktop"
 HERE = Path(__file__).resolve().parent
+THEME_COLUMNS = 5  # the character picker's grid
 MAC_RE = re.compile(r"([0-9A-F]{2}(?::[0-9A-F]{2}){5})", re.I)
 
 # The pet's body colour per state (tools/art/sprites.js).
@@ -236,16 +237,18 @@ class Window(QMainWindow):
         h.addWidget(send)
         v.addWidget(g)
 
-        g = QGroupBox("Theme")
+        # The characters are the bridge's art themes; config and API still say "theme".
+        g = QGroupBox("Character")
         tv = QVBoxLayout(g)
-        self.theme_box = QComboBox()
-        self.theme_box.setIconSize(QSize(32, 32))
-        self.theme_box.setEnabled(False)
-        self.theme_box.activated.connect(self.choose_theme)
+        self.theme_grid = QGridLayout()
+        self.theme_grid.setSpacing(4)
+        self.theme_group = QButtonGroup(self)
+        self.theme_group.setExclusive(True)
+        self.theme_group.idClicked.connect(self.choose_theme)
         self.theme_desc = QLabel("…")
         self.theme_desc.setWordWrap(True)
         self.theme_desc.setStyleSheet("color: gray")
-        tv.addWidget(self.theme_box)
+        tv.addLayout(self.theme_grid)
         tv.addWidget(self.theme_desc)
         v.addWidget(g)
 
@@ -267,7 +270,12 @@ class Window(QMainWindow):
             grid.addWidget(b, i // 3, i % 3)
         v.addWidget(g)
         v.addStretch(1)
-        return w
+        # The character grid makes this tab taller than the window.
+        scroll = QScrollArea()
+        scroll.setWidget(w)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        return scroll
 
     def _settings_tab(self):
         w = QWidget()
@@ -480,27 +488,36 @@ class Window(QMainWindow):
             if not data:
                 return
             self.themes = data["themes"]
-            self.theme_box.clear()
-            for t in self.themes:
-                self.theme_box.addItem(QIcon(pixels_pixmap(t["preview"], 32)), t["label"], t["id"])
-            self.theme_box.setEnabled(True)
+            for b in self.theme_group.buttons():
+                self.theme_group.removeButton(b)
+                b.deleteLater()
+            for i, t in enumerate(self.themes):
+                b = QToolButton(checkable=True, text=t["label"], toolTip=t["description"])
+                b.setIcon(QIcon(pixels_pixmap(t["preview"], 48)))
+                b.setIconSize(QSize(48, 48))
+                b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+                b.setAutoRaise(True)
+                b.setMinimumWidth(84)
+                self.theme_group.addButton(b, i)
+                self.theme_grid.addWidget(b, i // THEME_COLUMNS, i % THEME_COLUMNS)
             self._show_theme(data["current"])
         self.themes_loading = True
         self.bridge.get("/themes", done)
 
     def _show_theme(self, theme_id):
-        i = self.theme_box.findData(theme_id)
+        i = next((n for n, t in enumerate(self.themes or []) if t["id"] == theme_id), -1)
         if i < 0:
             return
-        if i != self.theme_box.currentIndex():
-            self.theme_box.setCurrentIndex(i)
+        b = self.theme_group.button(i)
+        if b and not b.isChecked():
+            b.setChecked(True)
         t = self.themes[i]
         self.theme_desc.setText(t["description"])
         if self.editor:
             self.editor.set_theme(t["id"], t["label"])
 
     def choose_theme(self, i):
-        theme_id = self.theme_box.itemData(i)
+        theme_id = self.themes[i]["id"]
         self.pending_theme = theme_id  # until the bridge answers, polls must not flip the box back
 
         def done(code, body):

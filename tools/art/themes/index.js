@@ -18,6 +18,7 @@ const THEMES = {
   sprout: require('./sprout'),
   weather: require('./weather'),
   terminal: require('./terminal'),
+  owl: require('./owl'),
   santa: require('./santa'),
   snowman: require('./snowman'),
   reindeer: require('./reindeer'),

@@ -525,6 +525,8 @@ async function handleConfig(req, res) {
     if (brightness !== null) sender.sendNext(encode.brightness(brightness)[0]);
   }
   if (cfg.mac !== before.mac && !process.env.EVO_MAC) relink();
+  // Show the new character even if the Evo had gone to its clock.
+  if (cfg.theme !== before.theme && machine.wake(now())) log(`[state] ${machine.displayed}`);
   log('[config] saved');
   update();
   send(res, 200, configJson(), 'application/json');
