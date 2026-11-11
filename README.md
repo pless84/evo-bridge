@@ -32,11 +32,11 @@ With several Claude Code sessions, the display shows the most urgent one (needs_
 
 Computer bridge only: each session that waits for you gets one pixel along the top of the display, from the left, oldest session first. Orange means it needs your input, red that it hit an error, and green that it finished. A green marker stays after the pet has gone back to idle, until you send that session a new prompt, close it, or choose **Clear markers** in the companion app (or its tray menu), so you can see at a glance how many sessions finished while you were away. While there are markers the idle pet stays instead of the clock, because the Evo's own clock can't carry them. Switch them off on the companion app's Display tab, or with `"unreadMarkers": false` in `config.json`.
 
-## Themes
+## Characters
 
-Thirteen art sets, all with the same states; the last five are for Christmas. Pick one on the companion app's Display tab, or set `"theme"` in `config.json`; the computer bridge switches at once.
+Thirteen characters (art sets), all with the same states; the last five are for Christmas. Pick one from the grid on the companion app's Display tab, or set `"theme"` in `config.json`; the computer bridge switches at once.
 
-| Theme | Idea |
+| Character (`theme`) | Idea |
 |---|---|
 | `blip` (default) | The original pet: a round blob whose colour shows the state. |
 | `robot` | A robot head: the antenna light shows the state, the screen shows the work. |
@@ -82,14 +82,14 @@ The computer bridge reads the art straight from `tools/art`, so after `npm run b
 
 `bridge/rfcomm-pipe.py` holds the Bluetooth connection: bytes from the bridge go to the Evo, and it exits when the link drops so the bridge can reconnect.
 
-Settings live in `~/.config/evo-bridge/config.json`: which Evo, brightness, theme, unread markers, and the timings from [Tuning](#tuning) (in ms; `idleToClockMs: 0` turns the clock off). Every field is optional. The companion app edits this file for you, and changes apply without a restart.
+Settings live in `~/.config/evo-bridge/config.json`: which Evo, brightness, character (`theme`), unread markers, and the timings from [Tuning](#tuning) (in ms; `idleToClockMs: 0` turns the clock off). Every field is optional. The companion app edits this file for you, and changes apply without a restart.
 
 ### Companion app
 
 A small tray app for the computer bridge (Qt, so it looks native on KDE):
 
 - **Status:** what the Evo shows, whether it's connected, and each Claude Code session by project folder, with the ones waiting for you marked. The tray icon takes the pet's colour, and its tooltip counts the waiting sessions.
-- **Display:** brightness, the [theme](#themes), the [unread markers](#unread-markers), scrolling text, preview each animation, and open the art editor.
+- **Display:** brightness, the [character](#characters), the [unread markers](#unread-markers), scrolling text, preview each animation, and open the art editor.
 - **Settings:** pick the Evo from your paired devices, and change the timings.
 - **Service:** start, stop or restart the bridge, start it at login, and read its log.
 
@@ -107,7 +107,7 @@ companion/install.sh               # adds "Evo companion" to the app menu
 - Onion skin (shows the previous frame faintly), a live preview, and undo/redo (Ctrl+Z / Ctrl+Shift+Z).
 - **Try on Evo** shows your version for a few seconds without saving. **Save** writes `tools/art/custom/<state>.gif`, and the computer bridge uses it right away. **Use starter art** deletes your version.
 
-The editor works on the current theme, and saved art is an ordinary 16×16 GIF in `tools/art/custom/<theme>/`, so the ESP32 can use it too: run `npm run states -- --theme <theme>` in `tools/` and reflash.
+The editor works on the current character, and saved art is an ordinary 16×16 GIF in `tools/art/custom/<theme>/`, so the ESP32 can use it too: run `npm run states -- --theme <theme>` in `tools/` and reflash.
 
 Or run `companion/evo-companion.py` directly. Closing the window keeps it in the tray; quit from the tray menu. The Service tab can also open it in the tray at login, or make it always start minimized in the tray. `companion/install.sh --remove` takes the menu entry away.
 
