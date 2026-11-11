@@ -19,6 +19,7 @@ const THEMES = {
   weather: require('./weather'),
   terminal: require('./terminal'),
   owl: require('./owl'),
+  fox: require('./fox'),
   santa: require('./santa'),
   snowman: require('./snowman'),
   reindeer: require('./reindeer'),
