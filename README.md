@@ -34,7 +34,7 @@ Computer bridge only: each session that waits for you gets one pixel along the t
 
 ## Themes
 
-Twelve art sets, all with the same states; the last five are for Christmas. Pick one on the companion app's Display tab, or set `"theme"` in `config.json`; the computer bridge switches at once.
+Thirteen art sets, all with the same states; the last five are for Christmas. Pick one on the companion app's Display tab, or set `"theme"` in `config.json`; the computer bridge switches at once.
 
 | Theme | Idea |
 |---|---|
@@ -45,6 +45,7 @@ Twelve art sets, all with the same states; the last five are for Christmas. Pick
 | `sprout` | A potted plant: sways when idle, grows while working, droops when it needs you, blooms when done. |
 | `weather` | A little sky: stars when idle, rain while working, a rainbow when it needs you, sun when done. |
 | `terminal` | Plain text: a blinking cursor, a progress bar, `?`, `OK` and `ERR`. |
+| `owl` | An owl on a branch: sleeps when idle, watches its talons while working, stares wide-eyed when it needs you, flaps its wings when done. |
 | `santa` | Santa's face: the pompom on his hat swings, he calls out when he needs you and smiles when done. |
 | `snowman` | A snowman in falling snow: waves his stick arms when he needs you, throws them up when done. |
 | `reindeer` | A reindeer with a glowing red nose: it flashes orange when it needs you and turns green when done. |
