@@ -20,6 +20,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 from PySide6.QtCore import QByteArray, QProcess, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QColor, QIcon, QImage, QPainter, QPixmap
@@ -197,13 +198,38 @@ class Window(QMainWindow):
             hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         self.sessions.verticalHeader().hide()
         self.sessions.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.sessions.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.sessions.itemSelectionChanged.connect(self._update_dismiss)
         v.addWidget(self.sessions, 1)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        self.dismiss_btn = QPushButton("Dismiss")
+        self.dismiss_btn.setToolTip("You have seen it: the selected sessions stop waiting for you and the Evo goes back to idle.")
+        self.dismiss_btn.setEnabled(False)
+        self.dismiss_btn.clicked.connect(self.dismiss_selected)
+        buttons.addWidget(self.dismiss_btn)
         self.clear_btn = QPushButton("Clear markers")
         self.clear_btn.setToolTip("Finished sessions stop counting as waiting. Ones that need you stay.")
         self.clear_btn.setEnabled(False)
         self.clear_btn.clicked.connect(self.clear_markers)
-        v.addWidget(self.clear_btn, 0, Qt.AlignmentFlag.AlignRight)
+        buttons.addWidget(self.clear_btn)
+        v.addLayout(buttons)
         return w
+
+    def _waiting_ids(self, selected_only):
+        """Ids of the sessions in the table that wait for you."""
+        rows = {i.row() for i in self.sessions.selectedIndexes()} if selected_only else range(self.sessions.rowCount())
+        ids = []
+        for i in rows:
+            item = self.sessions.item(i, 0)
+            if item and item.data(Qt.ItemDataRole.UserRole + 1):
+                ids.append(item.toolTip())
+        return ids
+
+    def _update_dismiss(self):
+        self.dismiss_btn.setEnabled(bool(self._waiting_ids(True)))
+        if getattr(self, "tray", None):  # the tray is made after the tabs
+            self.dismiss_all.setEnabled(bool(self._waiting_ids(False)))
 
     def _display_tab(self):
         w = QWidget()
@@ -385,10 +411,13 @@ class Window(QMainWindow):
         menu = QMenu()
         show = QAction("Open", self, triggered=self.show_window)
         art = QAction("Art editor…", self, triggered=lambda: self.open_editor())
+        self.dismiss_all = QAction("Dismiss all", self, triggered=self.dismiss_everything, enabled=False)
+        self.dismiss_all.setToolTip("Every session that waits for you goes back to idle.")
         clear = QAction("Clear markers", self, triggered=self.clear_markers)
         quit_ = QAction("Quit", self, triggered=self.quit)
         menu.addAction(show)
         menu.addAction(art)
+        menu.addAction(self.dismiss_all)
         menu.addAction(clear)
         menu.addSeparator()
         menu.addAction(quit_)
@@ -430,6 +459,7 @@ class Window(QMainWindow):
             self.link_label.setText(f"No answer from {URL} ({reason}). Start it on the Service tab.")
             self.sessions.setRowCount(0)
             self.clear_btn.setEnabled(False)
+            self._update_dismiss()
         else:
             st = s.get("state", "idle")
             color, title = COLORS.get(st, OFFLINE), LABELS.get(st, st)
@@ -461,11 +491,13 @@ class Window(QMainWindow):
                                          LABELS.get(unread, unread) if unread else "", f"{r['idle_s']} s ago")):
                     self.sessions.setItem(i, j, QTableWidgetItem(val))
                 self.sessions.item(i, 0).setToolTip(r["id"])
+                self.sessions.item(i, 0).setData(Qt.ItemDataRole.UserRole + 1, bool(unread))
                 if unread:
                     self.sessions.item(i, 2).setIcon(dot_icon(COLORS.get(unread, OFFLINE), 24))
             waiting = sum(1 for r in rows if r.get("unread"))
             # Only finished sessions can be cleared; the others still need you.
             self.clear_btn.setEnabled(any(r.get("unread") == "done" for r in rows))
+            self._update_dismiss()
         self.state_dot.setPixmap(dot_icon(color, 28).pixmap(28, 28))
         self.state_label.setText(title)
         if self.tray:
@@ -542,6 +574,17 @@ class Window(QMainWindow):
 
     def clear_markers(self):
         self.bridge.post("/unread/clear", "", self._report)
+
+    def dismiss_selected(self):
+        for sid in self._waiting_ids(True):
+            self.bridge.post("/dismiss?session_id=" + quote(sid, safe=""), "", self._after_dismiss)
+
+    def dismiss_everything(self):
+        self.bridge.post("/dismiss", "", self._after_dismiss)
+
+    def _after_dismiss(self, code, body):
+        self._report(code, body)
+        self.poll()  # show the change now, not at the next poll
 
     def pick_color(self):
         c = QColorDialog.getColor(self.text_color, self, "Text colour")
