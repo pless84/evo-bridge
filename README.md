@@ -36,6 +36,8 @@ Computer bridge only: each session that waits for you gets one pixel along the t
 
 Fourteen characters (art sets), all with the same states; the last five are for Christmas. Pick one from the grid on the companion app's Display tab, or set `"theme"` in `config.json`; the computer bridge switches at once.
 
+![Every character, left to right in the table's order, in six states, top to bottom: idle, thinking, working, needs input, done and error](docs/characters.png)
+
 | Character (`theme`) | Idea |
 |---|---|
 | `blip` (default) | The original pet: a round blob whose colour shows the state. |
@@ -46,14 +48,14 @@ Fourteen characters (art sets), all with the same states; the last five are for 
 | `weather` | A little sky: stars when idle, rain while working, a rainbow when it needs you, sun when done. |
 | `terminal` | Plain text: a blinking cursor, a progress bar, `?`, `OK` and `ERR`. |
 | `owl` | An owl on a branch: sleeps when idle, watches its talons while working, stares wide-eyed when it needs you, flaps its wings when done. |
-| `fox` | A sitting fox: sleeps when idle, swishes its tail while working, pricks up its ears when it needs you. |
+| `fox` | A sitting fox: sleeps when idle, swishes its tail while working, pricks up its ears when it needs you, wags its tail when done. |
 | `santa` | Santa's face: the pompom on his hat swings, he calls out when he needs you and smiles when done. |
 | `snowman` | A snowman in falling snow: waves his stick arms when he needs you, throws them up when done. |
 | `reindeer` | A reindeer with a glowing red nose: it flashes orange when it needs you and turns green when done. |
 | `tree` | A Christmas tree whose lights show the state: blue while working, orange when it needs you, all lit when done. |
 | `bauble` | A Christmas ball whose colour shows the state: it swings gently when idle and cracks on an error. |
 
-Preview sheets (one row per state) are in `tools/art/preview/` (`sheet.png` is Blip). The themes are code in `tools/art/themes/`; after changing one, run `npm run art` in `tools/` to re-render the GIFs.
+The characters are code in `tools/art/themes/`. After changing or adding one, run `npm run art` in `tools/` to re-render the GIFs, plus a preview sheet per character (one row per state) in `tools/art/preview/` (`sheet.png` is Blip; not committed). Run `npm run characters` to redraw the picture above.
 
 ## Layout
 

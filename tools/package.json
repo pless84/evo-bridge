@@ -2,6 +2,7 @@
   "name": "evo-tools",
   "scripts": {
     "art": "node render-art.js",
+    "characters": "node render-characters.js",
     "states": "node build-states.js",
     "build": "node render-art.js && node build-states.js",
     "test": "node test-encoder.js"
